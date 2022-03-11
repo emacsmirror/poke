@@ -88,8 +88,8 @@
     ("offset" poke-offset-face)
     ("struct-field-name" poke-struct-field-name-face)
     ("diff-thunk-header"  poke-diff-thunk-header-face)
-    ("diff-minus" poke-diff-minus)
-    ("diff-plus" poke-diff-plus)))
+    ("diff-minus" poke-diff-minus-face)
+    ("diff-plus" poke-diff-plus-face)))
 
 ;;;; poked
 
@@ -174,10 +174,13 @@
                           (substring poke-out-buf 1 (- poke-out-length 1)))))
              (when (buffer-live-p (process-buffer proc))
                (with-current-buffer (process-buffer proc)
-                 (let ((buffer-read-only nil))
-                   (goto-char (point-max))
-                   (insert output)
-                   (set-marker (process-mark proc) (point)))))))
+                 (let ((moving (= (point) (process-mark proc))))
+                   (save-excursion
+                     (let ((buffer-read-only nil))
+                       (goto-char (process-mark proc))
+                       (insert output)
+                       (set-marker (process-mark proc) (point))))
+                   (if moving (goto-char (process-mark proc))))))))
           (6 ;; Process eval poke output
            (let ((output (poke-out-stylize
                           (substring poke-out-buf 1 (- poke-out-length 1)))))
@@ -533,7 +536,7 @@ Commands:
   (interactive "fFile to open: ")
   ;; XXX: quote filename if needed
   (poke-code-send
-   (concat "{ set_ios (open (\"" filename "\")); } ?! E_generic_io")))
+   (concat "{ set_ios (open (\"" filename "\")); } ?! E_io;")))
 
 (defun poke-load-file (filename)
   (interactive "fPickle to load: ")
