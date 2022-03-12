@@ -318,7 +318,7 @@ Commands:
           (poke-make-pokelet-process-new "poke-out" "\x81"
                                          #'poke-out-handle-cmd))
     (process-put poke-out-process 'poke-out-styles nil)
-    (process-put poke-out-process 'poke-out-iter-begin nil)
+    (process-put poke-out-process 'poke-out-iter-begin 0)
     (process-put poke-out-process 'poke-out-eval nil)
     (process-put poke-out-process 'poke-out-emitted-iter-string nil)
     (save-excursion
