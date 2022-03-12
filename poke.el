@@ -127,6 +127,7 @@
 (defvar poke-out-emitted-iter-string nil)
 (defvar poke-out-iter-string
   (propertize (char-to-string 8594) 'font-lock-face 'poke-iter-string-face))
+(defvar poke-out-iter-begin nil)
 
 (defconst poke-out-state-waiting-for-length 0)
 (defconst poke-out-state-waiting-for-msg 1)
@@ -167,10 +168,22 @@
                (let ((buffer-read-only nil))
                  (goto-char (point-max))
                  (setq poke-out-iter-begin (point))))))
+          (3 ;; Iteration end
+           (when (buffer-live-p (process-buffer proc))
+             (with-current-buffer (process-buffer proc)
+               (save-excursion
+                 (unless (equal poke-out-iter-begin (point-max))
+                   (narrow-to-region poke-out-iter-begin (point-max)))
+                 (let ((buffer-read-only nil))
+                   (mapcar (lambda (window)
+                             (set-window-point window (point-max)))
+                           (get-buffer-window-list))))))
+           (setq poke-out-emitted-iter-string nil)
+           (when (process-live-p poke-repl-process)
+             (poke-repl-end-of-iteration)))
 	  (2 ;; Process terminal poke output
            (let ((output (poke-out-stylize
                           (substring poke-out-buf 1 (- poke-out-length 1)))))
-             (setq poke-out-got-output t)
              (when (buffer-live-p (process-buffer proc))
                (with-current-buffer (process-buffer proc)
                  (save-excursion
@@ -209,17 +222,6 @@
                    (let ((buffer-read-only nil))
                      (goto-char (point-max))
                      (insert (concat "error>" output))))))))
-          (3 ;; Iteration end
-           (when (buffer-live-p (process-buffer proc))
-             (with-current-buffer (process-buffer proc)
-               (save-excursion
-                 (let ((buffer-read-only nil))
-                   (mapcar (lambda (window)
-                             (set-window-point window (point-max)))
-                           (get-buffer-window-list))))))
-           (setq poke-out-emitted-iter-string nil)
-           (when (process-live-p poke-repl-process)
-             (poke-repl-end-of-iteration)))
           (4 ;; Styling class begin
            (let ((style (substring poke-out-buf 1 (- poke-out-length 1))))
              (setq poke-out-styles (cons style poke-out-styles))))
@@ -261,6 +263,7 @@ Commands:
     (setq poke-out-buf "")
     (setq poke-out-length 0)
     (setq poke-out-styles nil)
+    (setq poke-out-emitted-iter-string nil)
     (setq poke-out-process
           (poke-make-pokelet-process "poke-out" "\x81"))
     (set-process-query-on-exit-flag poke-out-process nil)
@@ -326,6 +329,7 @@ Commands:
 (defvar poke-vu-process nil)
 (defvar poke-vu-buf "")
 (defvar poke-vu-length 0)
+(defvar poke-vu-output "")
 
 (defconst poke-vu-state-waiting-for-length 0)
 (defconst poke-vu-state-waiting-for-msg 1)
@@ -353,10 +357,9 @@ Commands:
                (let ((buffer-read-only nil))
                  (delete-region (point-min) (point-max))))))
           (2 ;; APPEND
-           (when (buffer-live-p (process-buffer proc))
-             (with-current-buffer (process-buffer proc)
-               (let ((buffer-read-only nil))
-                 (insert (substring poke-vu-buf 1 (- poke-vu-length 1)))))))
+           (setq poke-vu-output
+                 (concat poke-vu-output
+                         (substring poke-vu-buf 1 (- poke-vu-length 1)))))
           (3 ;; HIGHLIGHT
            ;; XXX
            )
@@ -366,7 +369,11 @@ Commands:
           (5 ;; FINISH
            (when (buffer-live-p (process-buffer proc))
              (with-current-buffer (process-buffer proc)
-               (goto-char (point-min)))))
+               (let ((buffer-read-only nil))
+                 (delete-region (point-min) (point-max))
+                 (insert poke-vu-output)
+                 (goto-char (point-min)))))
+           (setq poke-vu-output ""))
 	  (_ ;; Protocol error
 	   (setq poke-vu-buf "")
 	   (setq poke-vu-length 0)
@@ -452,6 +459,7 @@ Commands:
   (when (not (process-live-p poke-vu-process))
     (setq poke-vu-state poke-vu-state-waiting-for-length)
     (setq poke-vu-buf "")
+    (setq poke-vu-output "")
     (setq poke-vu-length 0)
     (setq poke-vu-process
           (poke-make-pokelet-process "poke-vu" "\x82"))
@@ -575,11 +583,9 @@ Commands:
   (poke-repl)
   (poke-vu)
   (delete-other-windows)
-  (switch-to-buffer "*poke-repl*")
-  (let ((repl-window (get-buffer-window (current-buffer))))
-    (switch-to-buffer-other-window "*poke-vu*")
-    (switch-to-buffer-other-window "*poke-out*")
-    (select-window repl-window)))
+  (switch-to-buffer "*poke-vu*")
+  (switch-to-buffer-other-window "*poke-out*")
+  (switch-to-buffer-other-window "*poke-repl*"))
 
 (defun poke-exit ()
   (interactive)
