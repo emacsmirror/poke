@@ -45,8 +45,6 @@
 
 (require 'comint)
 
-(defvar poke-debug-p nil)
-
 ;;;; First, some utilities
 
 (defun poke-decode-u64-le (seq)
@@ -97,6 +95,7 @@
 
 (defvar poke-poked-program "poked")
 (defvar poke-poked-process nil)
+(defvar poked-socket "/tmp/poked.ipc")
 
 (defun poke-poked ()
   "Start a poke daemon process"
@@ -109,8 +108,6 @@
     (set-process-query-on-exit-flag poke-poked-process nil)))
 
 ;;;; generic pokelet stuff
-
-(defvar poked-socket "/tmp/poked.ipc")
 
 (defun poke-make-pokelet-process (name ctrl)
   (let ((proc (make-network-process :name name
@@ -127,7 +124,7 @@
 (defvar poke-out-length 0)
 (defvar poke-out-eval "")
 (defvar poke-out-styles nil)
-(defvar poke-out-got-output nil)
+(defvar poke-out-emitted-iter-string nil)
 (defvar poke-out-iter-string
   (propertize (char-to-string 8594) 'font-lock-face poke-iter-string-face))
 
@@ -169,13 +166,7 @@
              (with-current-buffer (process-buffer proc)
                (let ((buffer-read-only nil))
                  (goto-char (point-max))
-                 (setq poke-out-iter-begin (point))
-                 (if poke-debug-p
-                   (let ((iteration-number (poke-decode-u64-le
-                                            (substring poke-out-buf 1 9))))
-                     (insert (concat "//---- iteration begin "
-		                     (number-to-string iteration-number)
-                                     "\n"))))))))
+                 (setq poke-out-iter-begin (point))))))
 	  (2 ;; Process terminal poke output
            (let ((output (poke-out-stylize
                           (substring poke-out-buf 1 (- poke-out-length 1)))))
@@ -185,6 +176,9 @@
                  (save-excursion
                    (let ((buffer-read-only nil))
                      (goto-char (point-max))
+                     (unless poke-out-emitted-iter-string
+                       (insert (concat poke-out-iter-string "\n"))
+                       (setq  poke-out-emitted-iter-string t))
                      (insert output)))))))
           (6 ;; Process eval poke output
            (let ((output (poke-out-stylize
@@ -220,13 +214,10 @@
              (with-current-buffer (process-buffer proc)
                (save-excursion
                  (let ((buffer-read-only nil))
-                   (when poke-out-iter-string
-                     (when poke-out-got-output
-                       (insert (concat poke-out-iter-string "\n"))))
                    (mapcar (lambda (window)
                              (set-window-point window (point-max)))
                            (get-buffer-window-list))))))
-           (setq poke-out-got-output nil)
+           (setq poke-out-emitted-iter-string nil)
            (when (process-live-p poke-repl-process)
              (poke-repl-end-of-iteration)))
           (4 ;; Styling class begin
@@ -587,29 +578,11 @@ Commands:
   (interactive)
   ;; Note that killing the buffers will also kill the
   ;; associated processes if they are running.
-  (let ((out-buffer (get-buffer "*poke-out*"))
-        (cmd-buffer (get-buffer "*poke-cmd*"))
-        (code-buffer (get-buffer "*poke-code*"))
-        (vu-buffer (get-buffer "*poke-vu*"))
-        (repl-buffer (get-buffer "*poke-repl*"))
-        (poked-buffer (get-buffer "*poked*")))
-    (when out-buffer
-      (kill-buffer "*poke-out*")
-      (setq poke-out-process nil))
-    (when cmd-buffer
-      (kill-buffer "*poke-cmd*")
-      (setq poke-cmd-process nil))
-    (when code-buffer
-      (kill-buffer "*poke-code*")
-      (setq poke-code-process nil))
-    (when vu-buffer
-      (kill-buffer "*poke-vu*")
-      (setq poke-vu-process nil))
-    (when repl-buffer
-      (kill-buffer "*poke-repl*")
-      (setq poke-repl-process nil))
-    (when poked-buffer
-      (kill-buffer "*poked*")
-      (setq poke-poked-process nil))))
+  (mapcar
+   (lambda (bufname)
+     (let ((buf (get-buffer bufname)))
+       (when buf (kill-buffer buf))))
+   '("*poke-out*" "*poke-cmd*" "*poke-code*"
+     "*poke-vu*" "*poke-repl*" "*poked*")))
 
 ;;; poke.el ends here
