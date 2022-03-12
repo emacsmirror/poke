@@ -374,7 +374,6 @@ Commands:
 ;;;; poke-vu pokelet
 
 (defvar poke-vu-process nil)
-(defvar poke-vu-output "") ;; XXX
 
 (defun poke-vu-handle-cmd (proc cmd data)
   (pcase cmd
@@ -384,7 +383,8 @@ Commands:
          (let ((buffer-read-only nil))
            (delete-region (point-min) (point-max))))))
     (2 ;; APPEND
-     (setq poke-vu-output (concat poke-vu-output data)))
+     (process-put proc 'poke-vu-output
+                  (concat (process-get proc 'poke-vu-output) data)))
     (3 ;; HIGHLIGHT
      ;; XXX
      )
@@ -396,9 +396,9 @@ Commands:
        (with-current-buffer (process-buffer proc)
          (let ((buffer-read-only nil))
            (delete-region (point-min) (point-max))
-           (insert poke-vu-output)
+           (insert (process-get proc 'poke-vu-output))
            (goto-char (point-min)))))
-     (setq poke-vu-output ""))
+     (process-put proc 'poke-vu-output ""))
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
      (process-put proc 'pokelet-msg-lenght 0)
@@ -479,11 +479,10 @@ Commands:
 (defun poke-vu ()
   (interactive)
   (when (not (process-live-p poke-vu-process))
-    ;; XXX turn this into a process attribute
-    (setq poke-vu-output "")
     (setq poke-vu-process
           (poke-make-pokelet-process-new "poke-vu" "\x82"
                                          #'poke-vu-handle-cmd))
+    (process-put poke-vu-process 'poke-vu-output "")
     (save-excursion
      (set-buffer "*poke-vu*")
      (poke-vu-mode)))
