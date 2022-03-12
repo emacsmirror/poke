@@ -393,7 +393,16 @@ Commands:
 
 (defun poke-vu-next-line ()
   (interactive)
-  (next-line))
+  (if (save-excursion
+        (end-of-line)
+        (forward-char)
+        (eobp))
+      (progn
+        (setq-local start-byte-offset (+ start-byte-offset #x10))
+        (poke-vu-refresh)
+        (end-of-buffer)
+        (previous-line))
+    (next-line)))
 
 (defun poke-vu-page-down ()
   (interactive)
@@ -434,6 +443,8 @@ Commands:
   (define-key poke-vu-mode-map "\C-cg" 'poke-vu-goto-byte)
   (setq-local font-lock-defaults '(poke-vu-font-lock))
   (setq-local start-byte-offset 0)
+  (setq-local header-line-format
+              "76543210  0011 2233 4455 6677 8899 aabb ccdd eeff  0123456789ABCDEF")
   (setq mode-name "poke-vu")
   (setq major-mode 'poke-vu-mode)
   (read-only-mode t))
@@ -541,6 +552,19 @@ Commands:
 (defun poke-load-file (filename)
   (interactive "fPickle to load: ")
   (poke-code-send (concat "load \"" filename "\";")))
+
+(defun poke-set-omode ()
+  (interactive)
+  (let* ((omode (completing-read "Output mode: " '("VM_OMODE_PLAIN" "VM_OMODE_TREE") nil t)))
+    (poke-code-send (concat "vm_set_omode (" omode ");"))))
+
+(defun poke-set-pretty-print ()
+  (interactive)
+  (let* ((pprint (completing-read "Pretty-print: " '("yes" "no") nil t)))
+    (poke-code-send (concat "vm_set_opprint ("
+                            (if (equal pprint "yes")
+                                (number-to-string 1)
+                              (number-to-string 0)) ");"))))
 
 (defun poke ()
   (interactive)
