@@ -126,7 +126,7 @@
 (defvar poke-out-styles nil)
 (defvar poke-out-emitted-iter-string nil)
 (defvar poke-out-iter-string
-  (propertize (char-to-string 8594) 'font-lock-face poke-iter-string-face))
+  (propertize (char-to-string 8594) 'font-lock-face 'poke-iter-string-face))
 
 (defconst poke-out-state-waiting-for-length 0)
 (defconst poke-out-state-waiting-for-msg 1)
@@ -533,11 +533,14 @@ Commands:
   (poke-out)
   (poke-cmd)
   (poke-code)
-  (setq poke-repl-seq 0)
-  (let ((buf (get-buffer-create "*poke-repl*")))
-    (with-current-buffer  buf
-      (insert "Welcome to GNU poke.\n")
-      (poke-repl-mode))))
+  (when (not (process-live-p poke-repl-process))
+    (setq poke-repl-seq 0)
+    (let ((buf (get-buffer-create "*poke-repl*")))
+      (with-current-buffer  buf
+        (insert "Welcome to GNU poke.\n")
+        (poke-repl-mode))))
+  (when (called-interactively-p)
+    (switch-to-buffer-other-window "*poke-repl*")))
 
 ;;;; Main interface
 
@@ -569,10 +572,14 @@ Commands:
   (when (not (process-live-p poke-poked-process))
     (poke-poked)
     (sit-for 0.2))
-  (when (not (process-live-p poke-repl-process))
-    (poke-repl))
-  (switch-to-buffer "*poke-out*")
-  (switch-to-buffer-other-window "*poke-repl*"))
+  (poke-repl)
+  (poke-vu)
+  (delete-other-windows)
+  (switch-to-buffer "*poke-repl*")
+  (let ((repl-window (get-buffer-window (current-buffer))))
+    (switch-to-buffer-other-window "*poke-vu*")
+    (switch-to-buffer-other-window "*poke-out*")
+    (select-window repl-window)))
 
 (defun poke-exit ()
   (interactive)
