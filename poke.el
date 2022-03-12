@@ -109,13 +109,86 @@
                         :command (list poke-poked-program)))
     (set-process-query-on-exit-flag poke-poked-process nil)))
 
-;;;; generic pokelet stuff
+;;;; pokelet protocol
+
+;; The filter function below implements the poke daemon message
+;; protocol.  The pokelet processes are required to have the following
+;; attributes in their alist:
+;;
+;;  pokelet-state
+;;    One of the POKE_STATE_* values below.  Initially must
+;;    be POKE_STATE_LENGTH.
+;;
+;;  pokelet-buf
+;;    This is a string that accumulates the input received
+;;    by the pokelet.  Initially "".
+;;
+;;  pokelet-msg-length
+;;    Lenght of the message being processed.  Initially 0.
+;;
+;;  pokelet-msg-handler
+;;    Function that gets the process, a command number
+;;    and a command argument.  This function can error
+;;    if there is a protocol error.
+
+(defconst PLET_STATE_LENGTH 0) ; Collecting length bytes.
+(defconst PLET_STATE_MSG 1) ; Collecting message data.
+
+(defun poke-pokelet-filter (proc string)
+  (process-put proc 'pokelet-buf
+               (concat (process-get proc 'pokelet-buf) string))
+  (while (or (and (= (process-get proc 'pokelet-state) PLET_STATE_LENGTH)
+                  (>= (length (process-get proc 'pokelet-buf)) 2))
+             (and (= (process-get proc 'pokelet-state) PLET_STATE_MSG)
+                  (>= (length (process-get proc 'pokelet-buf))
+                      (process-get proc 'pokelet-msg-length))))
+    (if (= (process-get proc 'pokelet-state) POKE_STATE_LENGTH)
+        (let ((pokelet-buf (process-get proc 'pokelet-buf)))
+          ;; The message lenght is encoded as an unsigned
+          ;; little-endian 16 bit number.  Collect and skipt it.
+          (process-put proc
+                       'pokelet-msg-length
+                       (logior (ash (aref pokelet-buf 1) 8)
+                               (aref pokelet-buf 0)))
+          (process-put proc 'pokelet-buf (substring pokelet-buf 2))
+          ;; We are now waiting for the message data.
+          (process-put proc 'pokelet-state PLET_STATE_MSG))
+      ;; We are collecting message data.
+      (when (>= (length (process-get proc 'pokelet-buf))
+                (process-get proc 'pokelet-msg-length))
+	;; Action on the message according to the command.
+        (let ((cmd (aref (process-get proc 'pokelet-buf) 0))
+              (msg-data (substring (process-get proc 'pokelet-buf)
+                                   1
+                                   (- (process-get proc 'pokelet-msg-length) 1))))
+          (apply (process-get proc 'pokelet-msg-handler) (list proc cmd msg-data)))
+	;; Discard used portion of poke-elval-buf and go back to
+        ;; waiting for a message length.
+        (process-put proc
+                     'pokelet-buf
+                     (substring (process-get proc 'pokelet-buf)
+                                (process-get proc 'pokelet-msg-length)))
+        (process-put proc 'pokelet-state PLET_STATE_LENGTH)))))
+
+(defun poke-make-pokelet-process-new (name ctrl msg-handler)
+   (let ((proc (make-network-process :name name
+                                     :buffer (concat "*" name "*")
+                                     :family 'local
+                                     :service poked-socket)))
+     (process-put proc 'pokelet-state PLET_STATE_LENGTH)
+     (process-put proc 'pokelet-buf "")
+     (process-put proc 'pokelet-msg-length 0)
+     (process-put proc 'pokelet-msg-handler msg-handler)
+     (set-process-query-on-exit-flag proc nil)
+     (set-process-filter proc #'poke-pokelet-filter)
+     (process-send-string proc ctrl)
+     proc))
 
 (defun poke-make-pokelet-process (name ctrl)
-  (let ((proc (make-network-process :name name
-                                    :buffer (concat "*" name "*")
-                                    :family 'local
-                                    :service poked-socket)))
+   (let ((proc (make-network-process :name name
+                                     :buffer (concat "*" name "*")
+                                     :family 'local
+                                     :service poked-socket)))
     (process-send-string proc ctrl)
     proc))
 
@@ -495,14 +568,6 @@ Commands:
 
 ;;;; poke-elval
 
-(defvar poke-elval-process nil)
-(defvar poke-elval-buf "")
-(defvar poke-elval-length 0)
-
-(defconst poke-elval-state-waiting-for-length 0)
-(defconst poke-elval-state-waiting-for-msg 1)
-(defvar poke-elval-state poke-elval-state-waiting-for-length)
-
 (defconst poke-elval-init-pk
   "\
 var PLET_ELVAL_CMD_EVAL = 0UB;
@@ -516,46 +581,26 @@ fun plet_elval = (string s) void:
 }
 ")
 
-(defun poke-elval-filter (proc string)
-  (setq poke-elval-buf (concat poke-elval-buf string))
-  (while (or (and (= poke-elval-state poke-elval-state-waiting-for-length)
-                  (>= (length poke-elval-buf) 2))
-             (and (= poke-elval-state poke-elval-state-waiting-for-msg)
-                  (>= (length poke-elval-buf) poke-elval-length)))
-    (if (= poke-elval-state poke-elval-state-waiting-for-length)
-        (progn
-          (setq poke-elval-length
-                (logior (ash (aref poke-elval-buf 1) 8) (aref poke-elval-buf 0)))
-          (setq poke-elval-buf (substring poke-elval-buf 2))
-          (setq poke-elval-state poke-elval-state-waiting-for-msg))
-      ;; state is poke-elval-state-waiting-for-msg.
-      (when (>= (length poke-elval-buf) poke-elval-length)
-	;; Action on the message according to the command.
-	(pcase (aref poke-elval-buf 0)
-          (0 ;; EVAL
-           (ignore-errors
-             (let* ((code (substring poke-elval-buf 1 (- poke-elval-length 1)))
-                    (form (read-from-string code)))
-               (eval (car form)))))
-          (_ ;; Protocol error
-	   (setq poke-elval-buf "")
-	   (setq poke-elval-length 0)
-	   (error "pokelet protocol error")))
-	;; Discard used portion of poke-elval-buf and reset state.
-        (setq poke-elval-buf (substring poke-elval-buf poke-elval-length))
-        (setq poke-elval-state poke-elval-state-waiting-for-length)))))
+(defvar poke-elval-process nil)
+
+(defun poke-elval-handle-cmd (proc cmd data)
+  (pcase cmd
+    (0 ;; EVAL
+     (ignore-errors
+       (eval (car (read-from-string data)))))
+    (_ ;; Protocol error
+     (process-put proc 'pokelet-buf "")
+     (process-put proc 'pokelet-msg-lenght 0)
+     (error "pokelet protocol error"))))
 
 (defun poke-elval ()
   (interactive)
   (when (not (process-live-p poke-elval-process))
     (poke-code)
     (poke-code-send poke-elval-init-pk)
-    (setq poke-elval-buf "")
-    (setq poke-elval-length 0)
     (setq poke-elval-process
-          (poke-make-pokelet-process "poke-elval" "\xe4"))
-    (set-process-query-on-exit-flag poke-elval-process nil)
-    (set-process-filter poke-elval-process #'poke-elval-filter)))
+          (poke-make-pokelet-process-new "poke-elval" "\xe4"
+                                         #'poke-elval-handle-cmd))))
 
 ;;;; poke-repl
 
