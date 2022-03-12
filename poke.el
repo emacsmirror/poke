@@ -81,6 +81,8 @@
   "Face for deletion thunk lines.")
 (defface poke-diff-plus-face '((t :foreground "green"))
   "Face for addition thunk lines.")
+(defface poke-iter-string-face '((t :bold t))
+  "Face for iteration separator in *poke-out* buffer.")
 
 (defvar poke-styling-faces
   '(("integer" poke-integer-face)
@@ -125,6 +127,9 @@
 (defvar poke-out-length 0)
 (defvar poke-out-eval "")
 (defvar poke-out-styles nil)
+(defvar poke-out-got-output nil)
+(defvar poke-out-iter-string
+  (propertize (char-to-string 8594) 'font-lock-face poke-iter-string-face))
 
 (defconst poke-out-state-waiting-for-length 0)
 (defconst poke-out-state-waiting-for-msg 1)
@@ -160,27 +165,27 @@
 	(pcase (aref poke-out-buf 0)
 	  (1 ;; Iteration begin
            (setq poke-out-eval "")
-           (when poke-debug-p
-             (let ((iteration-number (poke-decode-u64-le
-                                      (substring poke-out-buf 1 9))))
-               (when (buffer-live-p (process-buffer proc))
-                 (with-current-buffer (process-buffer proc)
-                   (goto-char (point-max))
-                   (insert (concat "\n//---- iteration begin "
-		                   (number-to-string iteration-number)
-                                   "\n")))))))
+           (when (buffer-live-p (process-buffer proc))
+             (with-current-buffer (process-buffer proc)
+               (let ((buffer-read-only nil))
+                 (goto-char (point-max))
+                 (setq poke-out-iter-begin (point))
+                 (if poke-debug-p
+                   (let ((iteration-number (poke-decode-u64-le
+                                            (substring poke-out-buf 1 9))))
+                     (insert (concat "//---- iteration begin "
+		                     (number-to-string iteration-number)
+                                     "\n"))))))))
 	  (2 ;; Process terminal poke output
            (let ((output (poke-out-stylize
                           (substring poke-out-buf 1 (- poke-out-length 1)))))
+             (setq poke-out-got-output t)
              (when (buffer-live-p (process-buffer proc))
                (with-current-buffer (process-buffer proc)
-                 (let ((moving (= (point) (process-mark proc))))
-                   (save-excursion
-                     (let ((buffer-read-only nil))
-                       (goto-char (process-mark proc))
-                       (insert output)
-                       (set-marker (process-mark proc) (point))))
-                   (if moving (goto-char (process-mark proc))))))))
+                 (save-excursion
+                   (let ((buffer-read-only nil))
+                     (goto-char (point-max))
+                     (insert output)))))))
           (6 ;; Process eval poke output
            (let ((output (poke-out-stylize
                           (substring poke-out-buf 1 (- poke-out-length 1)))))
@@ -211,17 +216,19 @@
                      (goto-char (point-max))
                      (insert (concat "error>" output))))))))
           (3 ;; Iteration end
-           (let ((iteration-number (poke-decode-u64-le
-                                    (substring poke-out-buf 1 9))))
-             (when poke-debug-p
-               (when (buffer-live-p (process-buffer proc))
-                 (with-current-buffer (process-buffer proc)
-                   (goto-char (point-max))
-                   (insert (concat "\n//---- iteration end "
-		                   (number-to-string iteration-number)
-                                   "\n")))))
-             (when (process-live-p poke-repl-process)
-               (poke-repl-end-of-iteration))))
+           (when (buffer-live-p (process-buffer proc))
+             (with-current-buffer (process-buffer proc)
+               (save-excursion
+                 (let ((buffer-read-only nil))
+                   (when poke-out-iter-string
+                     (when poke-out-got-output
+                       (insert (concat poke-out-iter-string "\n"))))
+                   (mapcar (lambda (window)
+                             (set-window-point window (point-max)))
+                           (get-buffer-window-list))))))
+           (setq poke-out-got-output nil)
+           (when (process-live-p poke-repl-process)
+             (poke-repl-end-of-iteration)))
           (4 ;; Styling class begin
            (let ((style (substring poke-out-buf 1 (- poke-out-length 1))))
              (setq poke-out-styles (cons style poke-out-styles))))
