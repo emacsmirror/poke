@@ -142,7 +142,7 @@
              (and (= (process-get proc 'pokelet-state) PLET_STATE_MSG)
                   (>= (length (process-get proc 'pokelet-buf))
                       (process-get proc 'pokelet-msg-length))))
-    (if (= (process-get proc 'pokelet-state) POKE_STATE_LENGTH)
+    (if (= (process-get proc 'pokelet-state) PLET_STATE_LENGTH)
         (let ((pokelet-buf (process-get proc 'pokelet-buf)))
           ;; The message lenght is encoded as an unsigned
           ;; little-endian 16 bit number.  Collect and skipt it.
@@ -195,8 +195,7 @@
 ;;;; poke-out pokelet
 
 (defvar poke-out-process nil)
-(defvar poke-out-buf "")
-(defvar poke-out-length 0)
+
 (defvar poke-out-eval "")
 (defvar poke-out-styles nil)
 (defvar poke-out-emitted-iter-string nil)
@@ -204,9 +203,79 @@
   (propertize (char-to-string 8594) 'font-lock-face 'poke-iter-string-face))
 (defvar poke-out-iter-begin nil)
 
-(defconst poke-out-state-waiting-for-length 0)
-(defconst poke-out-state-waiting-for-msg 1)
-(defvar poke-out-state poke-out-state-waiting-for-length)
+(defun poke-out-handle-cmd (proc cmd data)
+  (pcase cmd
+    (1 ;; Iteration begin
+     (setq poke-out-eval "")
+     (when (buffer-live-p (process-buffer proc))
+       (with-current-buffer (process-buffer proc)
+         (let ((buffer-read-only nil))
+           (goto-char (point-max))
+           (setq poke-out-iter-begin (point))))))
+    (3 ;; Iteration end
+     (when (buffer-live-p (process-buffer proc))
+       (with-current-buffer (process-buffer proc)
+         (save-excursion
+           (unless (equal poke-out-iter-begin (point-max))
+             (narrow-to-region poke-out-iter-begin (point-max)))
+           (let ((buffer-read-only nil))
+             (mapcar (lambda (window)
+                       (set-window-point window (point-max)))
+                     (get-buffer-window-list))))))
+     (setq poke-out-emitted-iter-string nil)
+     (when (process-live-p poke-repl-process)
+       (poke-repl-end-of-iteration)))
+    (2 ;; Process terminal poke output
+     (let ((output (poke-out-stylize data)))
+       (when (buffer-live-p (process-buffer proc))
+         (with-current-buffer (process-buffer proc)
+           (save-excursion
+             (let ((buffer-read-only nil))
+               (goto-char (point-max))
+               (unless poke-out-emitted-iter-string
+                 (insert (concat poke-out-iter-string "\n"))
+                 (setq  poke-out-emitted-iter-string t))
+               (insert output)))))))
+    (6 ;; Process eval poke output
+     (let ((output (poke-out-stylize data)))
+       ;; Append the output to the global variable which will be
+       ;; handled at the end of the iteration.
+       (setq poke-out-eval
+             (concat poke-out-eval output))
+       ;; If there is no repl, output this in the *poke-out*
+       ;; buffer prefixed with >
+       (when (not (process-live-p poke-repl-process))
+         (when (buffer-live-p (process-buffer proc))
+           (with-current-buffer (process-buffer proc)
+             (let ((buffer-read-only nil))
+               (goto-char (point-max))
+               (insert (concat ">" output))))))))
+    (7 ;; Error output
+     (let ((output (poke-out-stylize data)))
+       ;; Append to the eval output for now.
+       (setq poke-out-eval
+             (concat poke-out-eval output))
+       ;; If there is no repl, output this in the *poke-out*
+       ;; buffer prefixed with error>
+       (when (not (process-live-p poke-repl-process))
+         (when (buffer-live-p (process-buffer proc))
+           (with-current-buffer (process-buffer proc)
+             (let ((buffer-read-only nil))
+               (goto-char (point-max))
+               (insert (concat "error>" output))))))))
+    (4 ;; Styling class begin
+     (let ((style data))
+       (setq poke-out-styles (cons style poke-out-styles))))
+    (5 ;; Styling class end
+     (let ((style data))
+       (if (or (not poke-out-styles)
+               (not (equal (car poke-out-styles) style)))
+           (error "closing a mismatched style")
+         (setq poke-out-styles (cdr poke-out-styles)))))
+    (_ ;; Protocol error
+     (process-put proc 'pokelet-buf "")
+     (process-put proc 'pokelet-msg-lenght 0)
+     (error "pokelet protocol error"))))
 
 (defun poke-out-stylize (string)
   (let ((propertized-string string))
@@ -219,100 +288,6 @@
                         propertized-string))))
             (reverse poke-out-styles))
     propertized-string))
-
-(defun poke-out-filter (proc string)
-  (setq poke-out-buf (concat poke-out-buf string))
-  (while (or (and (= poke-out-state poke-out-state-waiting-for-length)
-                  (>= (length poke-out-buf) 2))
-             (and (= poke-out-state poke-out-state-waiting-for-msg)
-                  (>= (length poke-out-buf) poke-out-length)))
-    (if (= poke-out-state poke-out-state-waiting-for-length)
-        (progn
-          (setq poke-out-length
-                (logior (ash (aref poke-out-buf 1) 8) (aref poke-out-buf 0)))
-          (setq poke-out-buf (substring poke-out-buf 2))
-          (setq poke-out-state poke-out-state-waiting-for-msg))
-      ;; state is poke-out-state-waiting-for-msg.
-      (when (>= (length poke-out-buf) poke-out-length)
-	;; Action on the message according to the command.
-	(pcase (aref poke-out-buf 0)
-	  (1 ;; Iteration begin
-           (setq poke-out-eval "")
-           (when (buffer-live-p (process-buffer proc))
-             (with-current-buffer (process-buffer proc)
-               (let ((buffer-read-only nil))
-                 (goto-char (point-max))
-                 (setq poke-out-iter-begin (point))))))
-          (3 ;; Iteration end
-           (when (buffer-live-p (process-buffer proc))
-             (with-current-buffer (process-buffer proc)
-               (save-excursion
-                 (unless (equal poke-out-iter-begin (point-max))
-                   (narrow-to-region poke-out-iter-begin (point-max)))
-                 (let ((buffer-read-only nil))
-                   (mapcar (lambda (window)
-                             (set-window-point window (point-max)))
-                           (get-buffer-window-list))))))
-           (setq poke-out-emitted-iter-string nil)
-           (when (process-live-p poke-repl-process)
-             (poke-repl-end-of-iteration)))
-	  (2 ;; Process terminal poke output
-           (let ((output (poke-out-stylize
-                          (substring poke-out-buf 1 (- poke-out-length 1)))))
-             (when (buffer-live-p (process-buffer proc))
-               (with-current-buffer (process-buffer proc)
-                 (save-excursion
-                   (let ((buffer-read-only nil))
-                     (goto-char (point-max))
-                     (unless poke-out-emitted-iter-string
-                       (insert (concat poke-out-iter-string "\n"))
-                       (setq  poke-out-emitted-iter-string t))
-                     (insert output)))))))
-          (6 ;; Process eval poke output
-           (let ((output (poke-out-stylize
-                          (substring poke-out-buf 1 (- poke-out-length 1)))))
-             ;; Append the output to the global variable which will be
-             ;; handled at the end of the iteration.
-             (setq poke-out-eval
-                   (concat poke-out-eval output))
-             ;; If there is no repl, output this in the *poke-out*
-             ;; buffer prefixed with >
-             (when (not (process-live-p poke-repl-process))
-               (when (buffer-live-p (process-buffer proc))
-                 (with-current-buffer (process-buffer proc)
-                   (let ((buffer-read-only nil))
-                     (goto-char (point-max))
-                     (insert (concat ">" output))))))))
-          (7 ;; Error output
-           (let ((output (poke-out-stylize
-                          (substring poke-out-buf 1 (- poke-out-length 1)))))
-             ;; Append to the eval output for now.
-             (setq poke-out-eval
-                   (concat poke-out-eval output))
-             ;; If there is no repl, output this in the *poke-out*
-             ;; buffer prefixed with error>
-             (when (not (process-live-p poke-repl-process))
-               (when (buffer-live-p (process-buffer proc))
-                 (with-current-buffer (process-buffer proc)
-                   (let ((buffer-read-only nil))
-                     (goto-char (point-max))
-                     (insert (concat "error>" output))))))))
-          (4 ;; Styling class begin
-           (let ((style (substring poke-out-buf 1 (- poke-out-length 1))))
-             (setq poke-out-styles (cons style poke-out-styles))))
-          (5 ;; Styling class end
-           (let ((style (substring poke-out-buf 1 (- poke-out-length 1))))
-             (if (or (not poke-out-styles)
-                     (not (equal (car poke-out-styles) style)))
-                 (error "closing a mismatched style")
-               (setq poke-out-styles (cdr poke-out-styles)))))
-	  (_ ;; Protocol error
-	   (setq poke-out-buf "")
-	   (setq poke-out-length 0)
-	   (error "pokelet protocol error"))))
-      ;; Discard used portion of poke-out-buf and reset state.
-      (setq poke-out-buf (substring poke-out-buf poke-out-length))
-      (setq poke-out-state poke-out-state-waiting-for-length))))
 
 (defvar poke-out-font-lock nil
   "Font lock entries for `poke-vu-mode'.")
@@ -334,15 +309,12 @@ Commands:
 (defun poke-out ()
   (interactive)
   (when (not (process-live-p poke-out-process))
-    (setq poke-out-state poke-out-state-waiting-for-length)
-    (setq poke-out-buf "")
-    (setq poke-out-length 0)
+    ;; XXX turn these into process attributes
     (setq poke-out-styles nil)
     (setq poke-out-emitted-iter-string nil)
     (setq poke-out-process
-          (poke-make-pokelet-process "poke-out" "\x81"))
-    (set-process-query-on-exit-flag poke-out-process nil)
-    (set-process-filter poke-out-process #'poke-out-filter)
+          (poke-make-pokelet-process-new "poke-out" "\x81"
+                                         #'poke-out-handle-cmd))
     (save-excursion
       (set-buffer "*poke-out*")
       (poke-out-mode)))
