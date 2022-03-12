@@ -40,6 +40,8 @@
 ;;      connected to the poked input channel 3.
 ;; poke-vu
 ;;      connected to the poked output channel 2.
+;; poke-elval
+;;      connected to the poked output channel 100.
 
 ;;; Code:
 
@@ -491,6 +493,70 @@ Commands:
               (when (equal (buffer-name buffer) "*poke-vu*")
                 (poke-vu-refresh)))))
 
+;;;; poke-elval
+
+(defvar poke-elval-process nil)
+(defvar poke-elval-buf "")
+(defvar poke-elval-length 0)
+
+(defconst poke-elval-state-waiting-for-length 0)
+(defconst poke-elval-state-waiting-for-msg 1)
+(defvar poke-elval-state poke-elval-state-waiting-for-length)
+
+(defconst poke-elval-init-pk
+  "\
+var PLET_ELVAL_CMD_EVAL = 0UB;
+
+fun plet_elval = (string s) void:
+{
+  var c = byte[s'length] ();
+
+  stoca (s, c);
+  chan_send (100,  [PLET_ELVAL_CMD_EVAL] + c);
+}
+")
+
+(defun poke-elval-filter (proc string)
+  (setq poke-elval-buf (concat poke-elval-buf string))
+  (while (or (and (= poke-elval-state poke-elval-state-waiting-for-length)
+                  (>= (length poke-elval-buf) 2))
+             (and (= poke-elval-state poke-elval-state-waiting-for-msg)
+                  (>= (length poke-elval-buf) poke-elval-length)))
+    (if (= poke-elval-state poke-elval-state-waiting-for-length)
+        (progn
+          (setq poke-elval-length
+                (logior (ash (aref poke-elval-buf 1) 8) (aref poke-elval-buf 0)))
+          (setq poke-elval-buf (substring poke-elval-buf 2))
+          (setq poke-elval-state poke-elval-state-waiting-for-msg))
+      ;; state is poke-elval-state-waiting-for-msg.
+      (when (>= (length poke-elval-buf) poke-elval-length)
+	;; Action on the message according to the command.
+	(pcase (aref poke-elval-buf 0)
+          (0 ;; EVAL
+           (ignore-errors
+             (let* ((code (substring poke-elval-buf 1 (- poke-elval-length 1)))
+                    (form (read-from-string code)))
+               (eval (car form)))))
+          (_ ;; Protocol error
+	   (setq poke-elval-buf "")
+	   (setq poke-elval-length 0)
+	   (error "pokelet protocol error")))
+	;; Discard used portion of poke-elval-buf and reset state.
+        (setq poke-elval-buf (substring poke-elval-buf poke-elval-length))
+        (setq poke-elval-state poke-elval-state-waiting-for-length)))))
+
+(defun poke-elval ()
+  (interactive)
+  (when (not (process-live-p poke-elval-process))
+    (poke-code)
+    (poke-code-send poke-elval-init-pk)
+    (setq poke-elval-buf "")
+    (setq poke-elval-length 0)
+    (setq poke-elval-process
+          (poke-make-pokelet-process "poke-elval" "\xe4"))
+    (set-process-query-on-exit-flag poke-elval-process nil)
+    (set-process-filter poke-elval-process #'poke-elval-filter)))
+
 ;;;; poke-repl
 
 (defconst poke-repl-prompt "#!poke!# ")
@@ -580,6 +646,7 @@ Commands:
   (when (not (process-live-p poke-poked-process))
     (poke-poked)
     (sit-for 0.2))
+  (poke-elval)
   (poke-repl)
   (poke-vu)
   (delete-other-windows)
@@ -596,6 +663,6 @@ Commands:
      (let ((buf (get-buffer bufname)))
        (when buf (kill-buffer buf))))
    '("*poke-out*" "*poke-cmd*" "*poke-code*"
-     "*poke-vu*" "*poke-repl*" "*poked*")))
+     "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*")))
 
 ;;; poke.el ends here
