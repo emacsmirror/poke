@@ -618,6 +618,13 @@ fun plet_elval = (string s) void:
 
 ;;;; Main interface
 
+(defconst poke-pk
+  "\
+fun quit = void:
+{
+  plet_elval (\"(poke-exit)\");
+}")
+
 (defun poke-open-file (filename)
   (interactive "fFile to open: ")
   ;; XXX: quote filename if needed
@@ -649,6 +656,7 @@ fun plet_elval = (string s) void:
   (poke-elval)
   (poke-repl)
   (poke-vu)
+  (poke-code-send poke-pk)
   (delete-other-windows)
   (switch-to-buffer "*poke-vu*")
   (switch-to-buffer-other-window "*poke-out*")
