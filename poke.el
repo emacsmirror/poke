@@ -374,60 +374,35 @@ Commands:
 ;;;; poke-vu pokelet
 
 (defvar poke-vu-process nil)
-(defvar poke-vu-buf "")
-(defvar poke-vu-length 0)
-(defvar poke-vu-output "")
+(defvar poke-vu-output "") ;; XXX
 
-(defconst poke-vu-state-waiting-for-length 0)
-(defconst poke-vu-state-waiting-for-msg 1)
-(defvar poke-vu-state poke-vu-state-waiting-for-length)
-
-(defun poke-vu-filter (proc string)
-  (setq poke-vu-buf (concat poke-vu-buf string))
-  (while (or (and (= poke-vu-state poke-vu-state-waiting-for-length)
-                  (>= (length poke-vu-buf) 2))
-             (and (= poke-vu-state poke-vu-state-waiting-for-msg)
-                  (>= (length poke-vu-buf) poke-vu-length)))
-    (if (= poke-vu-state poke-vu-state-waiting-for-length)
-        (progn
-          (setq poke-vu-length
-                (logior (ash (aref poke-vu-buf 1) 8) (aref poke-vu-buf 0)))
-          (setq poke-vu-buf (substring poke-vu-buf 2))
-          (setq poke-vu-state poke-vu-state-waiting-for-msg))
-      ;; state is poke-vu-state-waiting-for-msg.
-      (when (>= (length poke-vu-buf) poke-vu-length)
-	;; Action on the message according to the command.
-	(pcase (aref poke-vu-buf 0)
-	  (1 ;; RESET
-           (when (buffer-live-p (process-buffer proc))
-             (with-current-buffer (process-buffer proc)
-               (let ((buffer-read-only nil))
-                 (delete-region (point-min) (point-max))))))
-          (2 ;; APPEND
-           (setq poke-vu-output
-                 (concat poke-vu-output
-                         (substring poke-vu-buf 1 (- poke-vu-length 1)))))
-          (3 ;; HIGHLIGHT
-           ;; XXX
-           )
-          (4 ;; FILTER
-           ;; XXX
-           )
-          (5 ;; FINISH
-           (when (buffer-live-p (process-buffer proc))
-             (with-current-buffer (process-buffer proc)
-               (let ((buffer-read-only nil))
-                 (delete-region (point-min) (point-max))
-                 (insert poke-vu-output)
-                 (goto-char (point-min)))))
-           (setq poke-vu-output ""))
-	  (_ ;; Protocol error
-	   (setq poke-vu-buf "")
-	   (setq poke-vu-length 0)
-	   (error "pokelet protocol error")))
-	;; Discard used portion of poke-vu-buf and reset state.
-        (setq poke-vu-buf (substring poke-vu-buf poke-vu-length))
-        (setq poke-vu-state poke-vu-state-waiting-for-length)))))
+(defun poke-vu-handle-cmd (proc cmd data)
+  (pcase cmd
+    (1 ;; RESET
+     (when (buffer-live-p (process-buffer proc))
+       (with-current-buffer (process-buffer proc)
+         (let ((buffer-read-only nil))
+           (delete-region (point-min) (point-max))))))
+    (2 ;; APPEND
+     (setq poke-vu-output (concat poke-vu-output data)))
+    (3 ;; HIGHLIGHT
+     ;; XXX
+     )
+    (4 ;; FILTER
+     ;; XXX
+     )
+    (5 ;; FINISH
+     (when (buffer-live-p (process-buffer proc))
+       (with-current-buffer (process-buffer proc)
+         (let ((buffer-read-only nil))
+           (delete-region (point-min) (point-max))
+           (insert poke-vu-output)
+           (goto-char (point-min)))))
+     (setq poke-vu-output ""))
+    (_ ;; Protocol error
+     (process-put proc 'pokelet-buf "")
+     (process-put proc 'pokelet-msg-lenght 0)
+     (error "pokelet protocol error"))))
 
 (defvar poke-vu-font-lock
   `(("^[0-9a-zA-Z]+:" . 'poke-vu-addr-face)
@@ -504,14 +479,11 @@ Commands:
 (defun poke-vu ()
   (interactive)
   (when (not (process-live-p poke-vu-process))
-    (setq poke-vu-state poke-vu-state-waiting-for-length)
-    (setq poke-vu-buf "")
+    ;; XXX turn this into a process attribute
     (setq poke-vu-output "")
-    (setq poke-vu-length 0)
     (setq poke-vu-process
-          (poke-make-pokelet-process "poke-vu" "\x82"))
-    (set-process-query-on-exit-flag poke-vu-process nil)
-    (set-process-filter poke-vu-process #'poke-vu-filter)
+          (poke-make-pokelet-process-new "poke-vu" "\x82"
+                                         #'poke-vu-handle-cmd))
     (save-excursion
      (set-buffer "*poke-vu*")
      (poke-vu-mode)))
