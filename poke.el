@@ -84,6 +84,12 @@
 (defface poke-iter-string-face '((t :bold t))
   "Face for iteration separator in *poke-out* buffer.")
 
+;;;; Poke styling classes
+
+;; GNU poke uses named styling classes in order to style the output we
+;; get through the pokelets.  The following variable associates Poke
+;; styling class names with Emacs faces.
+
 (defvar poke-styling-faces
   '(("integer" poke-integer-face)
     ("string" poke-string-face)
@@ -162,8 +168,8 @@
                                    1
                                    (- (process-get proc 'pokelet-msg-length) 1))))
           (apply (process-get proc 'pokelet-msg-handler) (list proc cmd msg-data)))
-	;; Discard used portion of poke-elval-buf and go back to
-        ;; waiting for a message length.
+	;; Discard used portion of the buffer and go back to waiting
+        ;; for a message length.
         (process-put proc
                      'pokelet-buf
                      (substring (process-get proc 'pokelet-buf)
@@ -318,7 +324,7 @@ Commands:
           (poke-make-pokelet-process-new "poke-out" "\x81"
                                          #'poke-out-handle-cmd))
     (process-put poke-out-process 'poke-out-styles nil)
-    (process-put poke-out-process 'poke-out-iter-begin 0)
+    (process-put poke-out-process 'poke-out-iter-begin 1)
     (process-put poke-out-process 'poke-out-eval nil)
     (process-put poke-out-process 'poke-out-emitted-iter-string nil)
     (save-excursion
