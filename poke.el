@@ -633,10 +633,35 @@ fun poke_el_banner = void:
   print \"Welcome to GNU poke.\\n\";
 }
 
+fun poke_el_ios_open = (int<32> ios) void:
+{
+  var cmd = format (\"(poke-ios-open %i32d %v %u64d)\",
+                    ios, iohandler (ios), ioflags (ios));
+  plet_elval (cmd);
+}
+
+fun poke_el_ios_close = (int<32> ios) void:
+{
+  var cmd = format (\"(poke-ios-close %i32d)\", ios);
+  plet_elval (cmd);
+}
+
+ios_open_hook += [poke_el_ios_open];
+ios_close_hook += [poke_el_ios_close];
+
 fun quit = void:
 {
   plet_elval (\"(poke-exit)\");
 }")
+
+(defvar poke-ios-alist nil
+  "List of IO spaces currently open.")
+
+(defun poke-ios-open (ios iohandler ioflags)
+  (add-to-list 'poke-ios-alist (list ios iohandler ioflags)))
+
+(defun poke-ios-close (ios)
+  (setq poke-ios-alist (assq-delete-all ios poke-ios-alist)))
 
 (defun poke-open-file (filename)
   (interactive "fFile to open: ")
@@ -664,6 +689,7 @@ fun quit = void:
 (defun poke ()
   (interactive)
   (when (not (process-live-p poke-poked-process))
+    (setq poke-ios-alist nil)
     (poke-poked)
     (sit-for 0.2))
   (poke-elval)
@@ -677,13 +703,16 @@ fun quit = void:
 
 (defun poke-exit ()
   (interactive)
-  ;; Note that killing the buffers will also kill the
-  ;; associated processes if they are running.
-  (mapcar
-   (lambda (bufname)
-     (let ((buf (get-buffer bufname)))
-       (when buf (kill-buffer buf))))
-   '("*poke-out*" "*poke-cmd*" "*poke-code*"
-     "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*")))
+  (when (or (not poke-ios-alist)
+            (yes-or-no-p "There are open IO spaces.  Exit anyway? "))
+    ;; Note that killing the buffers will also kill the
+    ;; associated processes if they are running.
+    (mapcar
+     (lambda (bufname)
+       (let ((buf (get-buffer bufname)))
+         (when buf (kill-buffer buf))))
+     '("*poke-out*" "*poke-cmd*" "*poke-code*"
+       "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"))
+    (setq poke-ios-alist nil)))
 
 ;;; poke.el ends here
