@@ -509,6 +509,13 @@ Commands:
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-vu*")))
 
+(defun poke-vu-erase ()
+  (let ((buffer (get-buffer "*poke-vu*")))
+    (when (and (process-live-p poke-vu-process)
+               buffer)
+      (let ((buffer-read-only nil))
+        (delete-region (point-min) (point-max))))))
+
 (defun poke-vu-refresh ()
   (let* ((buffer (get-buffer "*poke-vu*"))
          (window (get-buffer-window buffer)))
@@ -541,6 +548,7 @@ fun plet_elval = (string s) void:
 
   stoca (s, c);
   chan_send (100,  [PLET_ELVAL_CMD_EVAL] + c);
+  print \"elval: sent '\" + s + \"'\n\";
 }
 ")
 
@@ -567,7 +575,8 @@ fun plet_elval = (string s) void:
 
 ;;;; poke-repl
 
-(defconst poke-repl-prompt "#!poke!# ")
+(defconst poke-repl-default-prompt "#!poke!# ")
+(defvar poke-repl-prompt poke-repl-default-prompt)
 (defvar poke-repl-process nil)
 (defvar poke-repl-seq 0)
 
@@ -597,6 +606,12 @@ fun plet_elval = (string s) void:
           (unless (equal (point) (point-max))
             (delete-char 1))))
       (setq poke-repl-seq (1+ poke-repl-seq)))))
+
+(defun poke-repl-set-prompt (string)
+  (setq poke-repl-prompt string)
+  (when (process-live-p poke-repl-process)
+    (comint-output-filter poke-repl-process "\n")
+    (comint-output-filter poke-repl-process poke-repl-prompt)))
 
 (defun poke-repl-input-sender (proc input)
   (unless (string-blank-p input)
@@ -637,12 +652,26 @@ fun plet_elval = (string s) void:
     (poke-code-send "set_ios (" + (number-to-string ios-id) ")")))
 
 (defun poke-ios-open (ios iohandler ioflags)
-  (add-to-list 'poke-ios-alist (list ios iohandler ioflags))
+  (unless (assoc ios poke-ios-alist)
+    (setq poke-ios-alist (cons (list ios iohandler ioflags) poke-ios-alist)))
   (poke-ios-populate))
 
 (defun poke-ios-close (ios)
   (setq poke-ios-alist (assq-delete-all ios poke-ios-alist))
-  (poke-ios-populate))
+  (poke-ios-populate)
+  ;; If there is no more open IO spaces, set the *poke-repl* prompt
+  ;; to the default value, also delete the *poke-vu* buffer if it
+  ;; exists.
+  (when (equal (length poke-ios-alist) 0)
+    (poke-repl-set-prompt poke-repl-default-prompt)
+    (poke-vu-erase)))
+
+(defun poke-ios-set (ios)
+  ;; Select the right line in *poke-ios*.
+  ;; Change prompt in *poke-repl*.
+  (let ((ios-data (assoc ios poke-ios-alist)))
+    (when ios-data
+      (poke-repl-set-prompt (concat "#!" (cadr ios-data) "!# ")))))
 
 (defvar poke-ios-mode-map
   (let ((map (make-sparse-keymap)))
@@ -689,7 +718,7 @@ fun plet_elval = (string s) void:
       (poke-ios-populate)))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-ios*")))
-  
+
 ;;;; Main interface
 
 (defconst poke-pk
@@ -713,8 +742,15 @@ fun poke_el_ios_close = (int<32> ios) void:
   plet_elval (cmd);
 }
 
+fun poke_el_ios_set = (int<32> ios) void:
+{
+  var cmd = format (\"(poke-ios-set %i32d)\", ios);
+  plet_elval (cmd);
+}
+
 ios_open_hook += [poke_el_ios_open];
 ios_close_hook += [poke_el_ios_close];
+ios_set_hook += [poke_el_ios_set];
 
 fun quit = void:
 {
@@ -771,6 +807,7 @@ fun quit = void:
          (when buf (kill-buffer buf))))
      '("*poke-out*" "*poke-cmd*" "*poke-code*"
        "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"))
+    (setq poke-repl-prompt poke-repl-default-prompt)
     (setq poke-ios-alist nil)))
 
 ;;; poke.el ends here
