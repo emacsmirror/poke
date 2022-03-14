@@ -647,12 +647,16 @@ fun plet_elval = (string s) void:
 (defvar poke-ios-alist nil
   "List of IO spaces currently open.")
 
-(defun poke-ios-set-ios ()
-  "Set the current IOS in poke to the entry selected in the
-*poke-ios* buffer."
-  (interactive)
-  (let ((ios-id (tabulated-list-get-id)))
-    (poke-code-send (concat "set_ios (" (number-to-string ios-id) ");"))))
+(defvar-local poke-ios-overlay nil
+  "The overlay on a highlighted poke-ios line.")
+
+(defun poke-ios-update-overlay ()
+  (unless poke-ios-overlay
+    (setq poke-ios-overlay (make-overlay (point) (point))))
+  (move-overlay poke-ios-overlay
+                (line-beginning-position)
+                (line-end-position))
+  (overlay-put poke-ios-overlay 'face 'highlight))
 
 (defun poke-ios-open (ios iohandler ioflags iosize)
   (unless (assoc ios poke-ios-alist)
@@ -682,8 +686,10 @@ fun plet_elval = (string s) void:
 
 (defvar poke-ios-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [return] 'poke-ios-set-ios)
-    (define-key map (kbd "RET") 'poke-ios-set-ios)
+    (define-key map [return] 'poke-ios-cmd-set-ios)
+    (define-key map (kbd "RET") 'poke-ios-cmd-set-ios)
+    (define-key map (kbd "n") 'poke-ios-cmd-next)
+    (define-key map (kbd "p") 'poke-ios-cmd-prev)
     map)
   "Local keymap for `poke-ios-mode' buffers.")
 
@@ -695,6 +701,26 @@ fun plet_elval = (string s) void:
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key nil)
   (tabulated-list-init-header))
+
+(defun poke-ios-cmd-set-ios ()
+  "Set the current IOS in poke to the entry selected in the
+*poke-ios* buffer."
+  (interactive)
+  (let ((ios-id (tabulated-list-get-id)))
+    (poke-code-send (concat "set_ios (" (number-to-string ios-id) ");")))
+  (poke-ios-update-overlay))
+
+(defun poke-ios-cmd-next ()
+  "Move to the next line in the poke-ios buffer."
+  (interactive)
+  (forward-line 1)
+  (poke-ios-update-overlay))
+
+(defun poke-ios-cmd-prev ()
+  "Move to the previous line in the poke-ios buffer."
+  (interactive)
+  (forward-line -1)
+  (poke-ios-update-overlay))
 
 (defun poke-ios-populate ()
   "Populate a `poke-ios-mode' buffer with the data in `poke-ios-alist."
@@ -726,7 +752,8 @@ fun plet_elval = (string s) void:
   (let ((buf (get-buffer-create "*poke-ios*")))
     (with-current-buffer buf
       (poke-ios-mode)
-      (poke-ios-populate)))
+      (poke-ios-populate)
+      (poke-ios-update-overlay)))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-ios*")))
 
@@ -813,17 +840,15 @@ fun quit = void:
 
 (defun poke-exit ()
   (interactive)
-  (when (or (not poke-ios-alist)
-            (yes-or-no-p "There are open IO spaces.  Exit anyway? "))
-    ;; Note that killing the buffers will also kill the
-    ;; associated processes if they are running.
-    (mapcar
-     (lambda (bufname)
-       (let ((buf (get-buffer bufname)))
-         (when buf (kill-buffer buf))))
-     '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
-       "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"))
-    (setq poke-repl-prompt poke-repl-default-prompt)
-    (setq poke-ios-alist nil)))
+  ;; Note that killing the buffers will also kill the
+  ;; associated processes if they are running.
+  (mapcar
+   (lambda (bufname)
+     (let ((buf (get-buffer bufname)))
+       (when buf (kill-buffer buf))))
+   '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
+     "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"))
+  (setq poke-repl-prompt poke-repl-default-prompt)
+  (setq poke-ios-alist nil))
 
 ;;; poke.el ends here
