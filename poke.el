@@ -548,7 +548,7 @@ fun plet_elval = (string s) void:
 
   stoca (s, c);
   chan_send (100,  [PLET_ELVAL_CMD_EVAL] + c);
-  print \"elval: sent '\" + s + \"'\n\";
+  //print \"elval: sent '\" + s + \"'\n\";
 }
 ")
 
@@ -651,9 +651,10 @@ fun plet_elval = (string s) void:
   (let ((ios-id (tabulated-list-get-id)))
     (poke-code-send "set_ios (" + (number-to-string ios-id) ")")))
 
-(defun poke-ios-open (ios iohandler ioflags)
+(defun poke-ios-open (ios iohandler ioflags iosize)
   (unless (assoc ios poke-ios-alist)
-    (setq poke-ios-alist (cons (list ios iohandler ioflags) poke-ios-alist)))
+    (setq poke-ios-alist (cons (list ios iohandler ioflags iosize)
+                               poke-ios-alist)))
   (poke-ios-populate))
 
 (defun poke-ios-close (ios)
@@ -693,16 +694,19 @@ fun plet_elval = (string s) void:
   (when (get-buffer "*poke-ios*")
     (save-excursion
       (set-buffer "*poke-ios*")
-      (let ((headers [("Id" 5 t) ("Handler" 10 nil) ("Flags" 8 nil)])
+      (let ((headers [("Id" 5 t) ("Handler" 10 nil) ("Flags" 8 nil)
+                      ("Size" 6 t)])
             (entries (mapcar
                       (lambda (ios)
                         (let ((ios-id (car ios))
                               (ios-handler (cadr ios))
-                              (ios-flags (caddr ios)))
+                              (ios-flags (caddr ios))
+                              (ios-size (cadddr ios)))
                           ;; XXX interpret flags.
                           (list ios-id (vector (number-to-string ios-id)
                                                ios-handler
-                                               (number-to-string ios-flags)))))
+                                               (number-to-string ios-flags)
+                                               (concat (number-to-string ios-size) "#B")))))
                       poke-ios-alist)))
         (setq tabulated-list-format headers)
         (setq tabulated-list-padding 2)
@@ -731,8 +735,8 @@ fun poke_el_banner = void:
 
 fun poke_el_ios_open = (int<32> ios) void:
 {
-  var cmd = format (\"(poke-ios-open %i32d %v %u64d)\",
-                    ios, iohandler (ios), ioflags (ios));
+  var cmd = format (\"(poke-ios-open %i32d %v %u64d %u64d)\",
+                    ios, iohandler (ios), ioflags (ios), iosize (ios)/#B);
   plet_elval (cmd);
 }
 
