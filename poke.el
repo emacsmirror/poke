@@ -46,6 +46,7 @@
 ;;; Code:
 
 (require 'comint)
+(require 'subr-x)
 
 ;;;; First, some utilities
 
