@@ -120,7 +120,7 @@
     (setq poke-poked-process
           (make-process :name "poked"
                         :buffer "*poked*"
-                        :command (list poke-poked-program)))
+                        :command (list poke-poked-program "--debug")))
     (set-process-query-on-exit-flag poke-poked-process nil)))
 
 ;;;; pokelet protocol
@@ -652,7 +652,7 @@ fun plet_elval = (string s) void:
 *poke-ios* buffer."
   (interactive)
   (let ((ios-id (tabulated-list-get-id)))
-    (poke-code-send "set_ios (" + (number-to-string ios-id) ")")))
+    (poke-code-send (concat "set_ios (" (number-to-string ios-id) ");"))))
 
 (defun poke-ios-open (ios iohandler ioflags iosize)
   (unless (assoc ios poke-ios-alist)
@@ -672,14 +672,18 @@ fun plet_elval = (string s) void:
 
 (defun poke-ios-set (ios)
   ;; Select the right line in *poke-ios*.
+  ;; XXX
   ;; Change prompt in *poke-repl*.
   (let ((ios-data (assoc ios poke-ios-alist)))
     (when ios-data
-      (poke-repl-set-prompt (concat "#!" (cadr ios-data) "!# ")))))
+      (poke-repl-set-prompt (concat "#!" (cadr ios-data) "!# "))))
+  ;; Update VU
+  (poke-vu-refresh))
 
 (defvar poke-ios-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map [return] 'poke-ios-set-ios)
+    (define-key map (kbd "RET") 'poke-ios-set-ios)
     map)
   "Local keymap for `poke-ios-mode' buffers.")
 
@@ -733,7 +737,7 @@ fun plet_elval = (string s) void:
 fun poke_el_banner = void:
 {
   /* XXX include libpoke version.  */
-  print \"Welcome to GNU poke.\\n\";
+  printf (\"Welcome to GNU poke %s.\\n\", poked_libpoke_version);
 }
 
 fun poke_el_ios_open = (int<32> ios) void:
@@ -797,11 +801,9 @@ fun quit = void:
   (poke-code-send poke-pk)
   (poke-repl)
   (poke-vu)
-  (poke-ios)
   (delete-other-windows)
   (switch-to-buffer "*poke-vu*")
   (switch-to-buffer-other-window "*poke-out*")
-  (switch-to-buffer-other-window "*poke-ios*")
   (switch-to-buffer-other-window "*poke-repl*"))
 
 (defun poke-exit ()
