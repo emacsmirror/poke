@@ -548,7 +548,6 @@ fun plet_elval = (string s) void:
 
   stoca (s, c);
   chan_send (100,  [PLET_ELVAL_CMD_EVAL] + c);
-  //print \"elval: sent '\" + s + \"'\n\";
 }
 ")
 
@@ -608,10 +607,14 @@ fun plet_elval = (string s) void:
       (setq poke-repl-seq (1+ poke-repl-seq)))))
 
 (defun poke-repl-set-prompt (string)
-  (setq poke-repl-prompt string)
-  (when (process-live-p poke-repl-process)
-    (comint-output-filter poke-repl-process "\n")
-    (comint-output-filter poke-repl-process poke-repl-prompt)))
+  (let ((previous-prompt poke-repl-prompt))
+    (setq poke-repl-prompt string)
+    (when (process-live-p poke-repl-process)
+      (with-current-buffer "*poke-repl*"
+        (save-excursion
+          (re-search-backward (regexp-quote previous-prompt) nil t)
+          (delete-region (point) (line-end-position))))
+      (comint-output-filter poke-repl-process poke-repl-prompt))))
 
 (defun poke-repl-input-sender (proc input)
   (unless (string-blank-p input)
@@ -794,9 +797,11 @@ fun quit = void:
   (poke-code-send poke-pk)
   (poke-repl)
   (poke-vu)
+  (poke-ios)
   (delete-other-windows)
   (switch-to-buffer "*poke-vu*")
   (switch-to-buffer-other-window "*poke-out*")
+  (switch-to-buffer-other-window "*poke-ios*")
   (switch-to-buffer-other-window "*poke-repl*"))
 
 (defun poke-exit ()
@@ -809,7 +814,7 @@ fun quit = void:
      (lambda (bufname)
        (let ((buf (get-buffer bufname)))
          (when buf (kill-buffer buf))))
-     '("*poke-out*" "*poke-cmd*" "*poke-code*"
+     '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
        "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"))
     (setq poke-repl-prompt poke-repl-default-prompt)
     (setq poke-ios-alist nil)))
