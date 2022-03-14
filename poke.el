@@ -83,6 +83,10 @@
   "Face for addition thunk lines.")
 (defface poke-iter-string-face '((t :bold t))
   "Face for iteration separator in *poke-out* buffer.")
+(defface poke-error-face '((t :bold t :foreground "red"))
+  "Face for error messages.")
+(defface poke-warning-face '((t :foreground "yellow"))
+  "Face for warning messages.")
 
 ;;;; Poke styling classes
 
@@ -97,7 +101,9 @@
     ("struct-field-name" poke-struct-field-name-face)
     ("diff-thunk-header"  poke-diff-thunk-header-face)
     ("diff-minus" poke-diff-minus-face)
-    ("diff-plus" poke-diff-plus-face)))
+    ("diff-plus" poke-diff-plus-face)
+    ("error" poke-error-face)
+    ("warning" poke-warning-face)))
 
 ;;;; poked
 
@@ -611,8 +617,8 @@ fun plet_elval = (string s) void:
     (setq poke-repl-seq 0)
     (let ((buf (get-buffer-create "*poke-repl*")))
       (with-current-buffer  buf
-        (insert "Welcome to GNU poke.\n")
         (poke-repl-mode))))
+  (poke-code-send "poke_el_banner;")
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-repl*")))
 
@@ -620,6 +626,12 @@ fun plet_elval = (string s) void:
 
 (defconst poke-pk
   "\
+fun poke_el_banner = void:
+{
+  /* XXX include libpoke version.  */
+  print \"Welcome to GNU poke.\\n\";
+}
+
 fun quit = void:
 {
   plet_elval (\"(poke-exit)\");
@@ -654,9 +666,9 @@ fun quit = void:
     (poke-poked)
     (sit-for 0.2))
   (poke-elval)
+  (poke-code-send poke-pk)
   (poke-repl)
   (poke-vu)
-  (poke-code-send poke-pk)
   (delete-other-windows)
   (switch-to-buffer "*poke-vu*")
   (switch-to-buffer-other-window "*poke-out*")
