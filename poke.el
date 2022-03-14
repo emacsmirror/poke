@@ -47,6 +47,7 @@
 
 (require 'comint)
 (require 'subr-x)
+(require 'tabulated-list)
 
 ;;;; First, some utilities
 
@@ -623,6 +624,61 @@ fun plet_elval = (string s) void:
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-repl*")))
 
+;;;; poke-ios
+
+(defvar poke-ios-alist nil
+  "List of IO spaces currently open.")
+
+(defun poke-ios-open (ios iohandler ioflags)
+  (add-to-list 'poke-ios-alist (list ios iohandler ioflags))
+  (poke-ios-populate))
+
+(defun poke-ios-close (ios)
+  (setq poke-ios-alist (assq-delete-all ios poke-ios-alist))
+  (poke-ios-populate))
+
+(define-derived-mode poke-ios-mode tabulated-list-mode "Poke IOS List"
+  "Major mode for summarizing the open IO spaces in poke.
+\\<poke-ios-mode-map>
+\\{poke-ios-mode-map}"
+  (setq tabulated-list-format nil)
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key nil)
+  (tabulated-list-init-header)
+                                        ;  (add-hook 'post-command-hook #'poke-set-ios nil t))
+  )
+
+(defun poke-ios-populate ()
+  "Populate a `poke-ios-mode' buffer with the data in `poke-ios-alist."
+  (when (get-buffer "*poke-ios*")
+    (save-excursion
+      (set-buffer "*poke-ios*")
+      (let ((headers [("Id" 5 t) ("Handler" 10 nil) ("Flags" 8 nil)])
+            (entries (mapcar
+                      (lambda (ios)
+                        (let ((ios-id (car ios))
+                              (ios-handler (cadr ios))
+                              (ios-flags (caddr ios)))
+                          ;; XXX interpret flags.
+                          (list ios-id (vector (number-to-string ios-id)
+                                               ios-handler
+                                               (number-to-string ios-flags)))))
+                      poke-ios-alist)))
+        (setq tabulated-list-format headers)
+        (setq tabulated-list-padding 2)
+        (tabulated-list-init-header)
+        (setq tabulated-list-entries entries)
+        (tabulated-list-print nil)))))
+
+(defun poke-ios ()
+  (interactive)
+  (let ((buf (get-buffer-create "*poke-ios*")))
+    (with-current-buffer buf
+      (poke-ios-mode)
+      (poke-ios-populate)))
+  (when (called-interactively-p)
+    (switch-to-buffer-other-window "*poke-ios*")))
+  
 ;;;; Main interface
 
 (defconst poke-pk
@@ -653,15 +709,6 @@ fun quit = void:
 {
   plet_elval (\"(poke-exit)\");
 }")
-
-(defvar poke-ios-alist nil
-  "List of IO spaces currently open.")
-
-(defun poke-ios-open (ios iohandler ioflags)
-  (add-to-list 'poke-ios-alist (list ios iohandler ioflags)))
-
-(defun poke-ios-close (ios)
-  (setq poke-ios-alist (assq-delete-all ios poke-ios-alist)))
 
 (defun poke-open-file (filename)
   (interactive "fFile to open: ")
