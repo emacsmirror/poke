@@ -629,6 +629,13 @@ fun plet_elval = (string s) void:
 (defvar poke-ios-alist nil
   "List of IO spaces currently open.")
 
+(defun poke-ios-set-ios ()
+  "Set the current IOS in poke to the entry selected in the
+*poke-ios* buffer."
+  (interactive)
+  (let ((ios-id (tabulated-list-get-id)))
+    (poke-code-send "set_ios (" + (number-to-string ios-id) ")")))
+
 (defun poke-ios-open (ios iohandler ioflags)
   (add-to-list 'poke-ios-alist (list ios iohandler ioflags))
   (poke-ios-populate))
@@ -637,6 +644,12 @@ fun plet_elval = (string s) void:
   (setq poke-ios-alist (assq-delete-all ios poke-ios-alist))
   (poke-ios-populate))
 
+(defvar poke-ios-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [return] 'poke-ios-set-ios)
+    map)
+  "Local keymap for `poke-ios-mode' buffers.")
+
 (define-derived-mode poke-ios-mode tabulated-list-mode "Poke IOS List"
   "Major mode for summarizing the open IO spaces in poke.
 \\<poke-ios-mode-map>
@@ -644,9 +657,7 @@ fun plet_elval = (string s) void:
   (setq tabulated-list-format nil)
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key nil)
-  (tabulated-list-init-header)
-                                        ;  (add-hook 'post-command-hook #'poke-set-ios nil t))
-  )
+  (tabulated-list-init-header))
 
 (defun poke-ios-populate ()
   "Populate a `poke-ios-mode' buffer with the data in `poke-ios-alist."
