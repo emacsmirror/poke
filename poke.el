@@ -712,7 +712,7 @@ fun plet_elval = (string s) void:
                           ;; XXX interpret flags.
                           (list ios-id (vector (number-to-string ios-id)
                                                ios-handler
-                                               (number-to-string ios-flags)
+                                               ios-flags
                                                (concat (number-to-string ios-size) "#B")))))
                       poke-ios-alist)))
         (setq tabulated-list-format headers)
@@ -742,8 +742,13 @@ fun poke_el_banner = void:
 
 fun poke_el_ios_open = (int<32> ios) void:
 {
-  var cmd = format (\"(poke-ios-open %i32d %v %u64d %u64d)\",
-                    ios, iohandler (ios), ioflags (ios), iosize (ios)/#B);
+  var flags = ioflags (ios);
+  var flags_str = \"\";
+
+  flags_str += flags & IOS_F_READ ? \"r\" : \" \";
+  flags_str += flags & IOS_F_WRITE ? \"w\" : \" \";
+  var cmd = format (\"(poke-ios-open %i32d %v \\\"%s\\\" %u64d)\",
+                    ios, iohandler (ios), flags_str, iosize (ios)/#B);
   plet_elval (cmd);
 }
 
