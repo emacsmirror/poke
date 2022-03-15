@@ -5,7 +5,7 @@
 ;; Maintainer: Jose E. Marchesi <jemarch@gnu.org>
 ;; URL: https://www.jemarch.net/poke
 ;; Package-Requires: ((emacs "25"))
-;; Version: 1.1
+;; Version: 2.1
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -579,8 +579,21 @@ fun plet_elval = (string s) void:
 (defvar poke-repl-process nil)
 (defvar poke-repl-seq 0)
 
+(defvar poke-repl-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "\C-ci") 'poke-repl-cmd-goto-ios)
+    map)
+  "Local keymap for `poke-repl-mode' buffers.")
+
+(defun poke-repl-cmd-goto-ios ()
+  (interactive)
+  (poke-ios)
+  (switch-to-buffer-other-window "*poke-ios*"))
+
 (define-derived-mode poke-repl-mode comint-mode "poke"
-  "poke-repl mode."
+  "Major mode for the poke repl.
+\\<poke-repl-mode-map>
+\\{poke-repl-mode-map}"
   (setq comint-prompt-regexp (concat "^" (regexp-quote poke-repl-prompt)))
   (setq comint-input-sender 'poke-repl-input-sender)
   (setq poke-repl-process
@@ -693,7 +706,7 @@ fun plet_elval = (string s) void:
     map)
   "Local keymap for `poke-ios-mode' buffers.")
 
-(define-derived-mode poke-ios-mode tabulated-list-mode "Poke IOS List"
+(define-derived-mode poke-ios-mode tabulated-list-mode "poke-ios"
   "Major mode for summarizing the open IO spaces in poke.
 \\<poke-ios-mode-map>
 \\{poke-ios-mode-map}"
@@ -763,8 +776,17 @@ fun plet_elval = (string s) void:
   "\
 fun poke_el_banner = void:
 {
-  /* XXX include libpoke version.  */
-  printf (\"Welcome to GNU poke %s.\\n\", poked_libpoke_version);
+  print (\"     _____\n\");
+  print (\" ---'   __\\\\_______\n\");
+  printf (\"            ______)  Emacs meets GNU poke %s\n\", poked_libpoke_version);
+  print (\"            __)\n\");
+  print (\"           __)\n\");
+  print (\" ---._______)\n\");
+  print (\"\n\");
+  print (\"Copyright (C) 2022 Jose E. Marchesi.
+License GPLv3+: GNU GPL version 3 or later.\n\n\");
+  print (\"This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.\n\");
 }
 
 fun poke_el_ios_open = (int<32> ios) void:
