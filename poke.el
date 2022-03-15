@@ -172,6 +172,8 @@
                 (process-get proc 'pokelet-msg-length))
 	;; Action on the message according to the command.
         (let ((cmd (aref (process-get proc 'pokelet-buf) 0))
+              ;; Note we ignore the last byte of msg-data which is
+              ;; always zero.
               (msg-data (substring (process-get proc 'pokelet-buf)
                                    1
                                    (- (process-get proc 'pokelet-msg-length) 1))))
@@ -195,6 +197,7 @@
      (process-put proc 'pokelet-msg-handler msg-handler)
      (set-process-query-on-exit-flag proc nil)
      (set-process-filter proc #'poke-pokelet-filter)
+     (set-process-filter-multibyte proc nil)
      (process-send-string proc ctrl)
      proc))
 
@@ -397,7 +400,7 @@ Commands:
 
 (defun poke-vu-handle-cmd (proc cmd data)
   (pcase cmd
-    (1 ;; RESET
+    (1 ;; CLEAR
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
          (let ((buffer-read-only nil))
