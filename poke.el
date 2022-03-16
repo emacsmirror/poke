@@ -395,7 +395,10 @@ Commands:
                         (point-min)))
         (code-end (or (save-excursion (re-search-forward "^//--$" nil t))
                       (point-max))))
-    (poke-code-send (buffer-substring code-begin code-end))))
+    (poke-code-send (buffer-substring code-begin code-end)))
+  ;; XXX only do this if this not the only window in the frame.
+  (when (window-parent)
+    (delete-window)))
 
 (defvar poke-code-mode-map
   (let ((map (make-sparse-keymap)))
@@ -463,6 +466,12 @@ Commands:
     ("  .*$" . 'poke-vu-ascii-face)
     )
   "Font lock entries for `poke-vu-mode'.")
+
+(defun poke-vu-cmd-beginning-of-buffer ()
+  (interactive)
+  (setq start-byte-offset 0)
+  (poke-vu-refresh)
+  (poke-vu-goto-byte 0))
 
 (defun poke-vu-cmd-previous-line ()
   (interactive)
@@ -637,6 +646,7 @@ Commands:
   (define-key poke-vu-mode-map "\C-e" 'poke-vu-cmd-move-end-of-line)
   (define-key poke-vu-mode-map "\C-b" 'poke-vu-cmd-backward-char)
   (define-key poke-vu-mode-map "\C-f" 'poke-vu-cmd-forward-char)
+  (define-key poke-vu-mode-map "\M-<" 'poke-vu-cmd-beginning-of-buffer)
   (define-key poke-vu-mode-map "\C-p" 'poke-vu-cmd-previous-line)
   (define-key poke-vu-mode-map "\C-n" 'poke-vu-cmd-next-line)
   (define-key poke-vu-mode-map "\C-cg" 'poke-vu-cmd-goto-byte)
@@ -736,6 +746,7 @@ fun plet_elval = (string s) void:
 (defvar poke-repl-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "\C-ci") 'poke-repl-cmd-goto-ios)
+    (define-key map (kbd "\C-cc") 'poke-repl-cmd-goto-code)
     map)
   "Local keymap for `poke-repl-mode' buffers.")
 
@@ -743,6 +754,11 @@ fun plet_elval = (string s) void:
   (interactive)
   (poke-ios)
   (switch-to-buffer-other-window "*poke-ios*"))
+
+(defun poke-repl-cmd-goto-code ()
+  (interactive)
+  (poke-code)
+  (switch-to-buffer-other-window "*poke-code*"))
 
 (define-derived-mode poke-repl-mode comint-mode "poke"
   "Major mode for the poke repl.
@@ -1012,8 +1028,7 @@ fun quit = void:
   (delete-other-windows)
   (switch-to-buffer "*poke-vu*")
   (switch-to-buffer-other-window "*poke-out*")
-  (switch-to-buffer-other-window "*poke-repl*")
-  (switch-to-buffer-other-window "*poke-code*"))
+  (switch-to-buffer-other-window "*poke-repl*"))
 
 (defun poke-exit ()
   (interactive)
