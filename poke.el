@@ -48,6 +48,7 @@
 (require 'comint)
 (require 'subr-x)
 (require 'tabulated-list)
+(require 'poke-mode)
 
 ;;;; First, some utilities
 
@@ -387,12 +388,40 @@ Commands:
           (process-send-string poke-code-process string)))
     (error "poke-code is not running")))
 
+(defun poke-code-cmd-send-code ()
+  "Execute Poke code."
+  (interactive)
+  (let ((code-begin (or (save-excursion (re-search-backward "^//--$" nil t))
+                        (point-min)))
+        (code-end (or (save-excursion (re-search-forward "^//--$" nil t))
+                      (point-max))))
+    (poke-code-send (buffer-substring code-begin code-end))))
+
+(defvar poke-code-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "\C-c\C-c" 'poke-code-cmd-send-code)
+    map))
+
+(define-derived-mode poke-code-mode poke-mode "poke-code"
+  "A major mode for Poke code.
+
+Commands:
+\\<poke-code-mode-map>
+\\{poke-code-mode-map}"
+)
+
 (defun poke-code ()
   (interactive)
   (when (not (process-live-p poke-code-process))
     (setq poke-code-process (poke-make-pokelet-process
                             "poke-code" "\x01"))
-    (set-process-query-on-exit-flag poke-code-process nil))
+    (set-process-query-on-exit-flag poke-code-process nil)
+    (save-excursion
+      (set-buffer "*poke-code*")
+      (poke-code-mode)
+      (goto-char (point-min))
+      (insert "/* This is a Poke evaluation code.  Press C-cC-c to evaluate the current section.  */\n"
+              "/* //-- markers at the beginning of lines separate sections.  */\n")))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-code*")))
 
@@ -422,7 +451,7 @@ Commands:
          (let ((buffer-read-only nil))
            (delete-region (point-min) (point-max))
            (insert (process-get proc 'poke-vu-output))
-           (goto-char (process-get proc 'poke-current-position)))))
+           (poke-vu-goto-byte current-byte))))
      (process-put proc 'poke-vu-output ""))
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
@@ -537,8 +566,7 @@ relative to the beginning of the shown IO space."
       ;; Scroll so the desired byte is in the first line.
       (setq start-byte-offset (- offset
                                  (% offset poke-vu-bytes-per-line)))
-      (process-put poke-vu-process 'poke-current-position
-                   offset)
+      (setq current-byte offset)
       (poke-vu-refresh)
       (setq byte-pos (poke-vu-byte-pos offset)))
     ;; Move the point where the byte at the given offset is.
@@ -554,7 +582,7 @@ relative to the beginning of the shown IO space."
                         1)))
       (overlay-put (make-overlay ascii-point (+ ascii-point 1))
                    'face 'poke-vu-selected-byte-face)))
-    (message (format "0x%x#B" offset))))
+    (message (format "0x%x#B" offset)))
 
 (defun poke-vu-cmd-goto-byte (offset)
   (interactive "nGoto byte: ")
@@ -617,6 +645,7 @@ Commands:
   (setq-local start-byte-offset 0)
   (setq-local header-line-format
               "76543210  0011 2233 4455 6677 8899 aabb ccdd eeff  0123456789ABCDEF")
+  (setq-local current-byte 0)
   (setq mode-name "poke-vu")
   (setq major-mode 'poke-vu-mode)
   (read-only-mode t))
@@ -628,7 +657,6 @@ Commands:
           (poke-make-pokelet-process-new "poke-vu" "\x82"
                                          #'poke-vu-handle-cmd))
     (process-put poke-vu-process 'poke-vu-output "")
-    (process-put poke-vu-process 'poke-current-position 0)
     (save-excursion
      (set-buffer "*poke-vu*")
      (poke-vu-mode)))
@@ -647,10 +675,6 @@ Commands:
          (window (get-buffer-window buffer)))
     (when (and (process-live-p poke-vu-process)
                window)
-      (save-excursion
-        (set-buffer buffer)
-        (process-put poke-vu-process 'poke-current-position
-                     (point)))
       ;; Note we are assuming each VU line contains 0x10 bytes.
       (poke-code-send (concat "{vu "
                               ":from " (number-to-string
@@ -988,7 +1012,8 @@ fun quit = void:
   (delete-other-windows)
   (switch-to-buffer "*poke-vu*")
   (switch-to-buffer-other-window "*poke-out*")
-  (switch-to-buffer-other-window "*poke-repl*"))
+  (switch-to-buffer-other-window "*poke-repl*")
+  (switch-to-buffer-other-window "*poke-code*"))
 
 (defun poke-exit ()
   (interactive)
