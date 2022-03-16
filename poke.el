@@ -529,7 +529,7 @@ Commands:
                               ":from " (number-to-string
                                         (buffer-local-value 'start-byte-offset buffer))
                               "#B "
-                              ":size " (number-to-string (* (- (window-height window) 1)
+                              ":size " (number-to-string (* (- (window-height window) 2)
                                                             #x10)) "#B"
                               ";} ?! E_no_ios;")))))
 
@@ -653,8 +653,8 @@ fun plet_elval = (string s) void:
     (setq poke-repl-seq 0)
     (let ((buf (get-buffer-create "*poke-repl*")))
       (with-current-buffer  buf
-        (poke-repl-mode))))
-  (poke-code-send "poke_el_banner;")
+        (poke-repl-mode)))
+    (poke-code-send "poke_el_banner;"))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-repl*")))
 
