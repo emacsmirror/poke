@@ -420,7 +420,7 @@ Commands:
          (let ((buffer-read-only nil))
            (delete-region (point-min) (point-max))
            (insert (process-get proc 'poke-vu-output))
-           (goto-char (point-min)))))
+           (goto-char (process-get proc 'poke-current-position)))))
      (process-put proc 'poke-vu-output ""))
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
@@ -433,15 +433,18 @@ Commands:
     )
   "Font lock entries for `poke-vu-mode'.")
 
-(defun poke-vu-prev-line ()
+(defun poke-vu-cmd-previous-line ()
   (interactive)
   (if (equal (line-number-at-pos) 1)
       (progn
         (setq-local start-byte-offset (- start-byte-offset #x10))
         (poke-vu-refresh))
-    (previous-line)))
+    (previous-line))
+  (let ((offset (poke-vu-byte-at-point)))
+    (if offset
+          (poke-vu-goto-byte offset))))
 
-(defun poke-vu-next-line ()
+(defun poke-vu-cmd-next-line ()
   (interactive)
   (if (save-excursion
         (end-of-line)
@@ -452,30 +455,132 @@ Commands:
         (poke-vu-refresh)
         (end-of-buffer)
         (previous-line))
-    (next-line)))
+    (next-line))
+  (let ((offset (poke-vu-byte-at-point)))
+    (if offset
+        (poke-vu-goto-byte offset))))
 
-(defun poke-vu-page-down ()
+(defun poke-vu-cmd-page-down ()
   (interactive)
   (save-excursion
     (let ((window (get-buffer-window (current-buffer))))
       (setq-local start-byte-offset
                   (+ start-byte-offset (* (- (window-height) 1) #x10)))
-      (poke-vu-refresh))))
+      (poke-vu-refresh)))
+  (let ((offset (poke-vu-byte-at-point)))
+    (if offset
+        (poke-vu-goto-byte offset))))
 
-(defun poke-vu-page-up ()
+(defun poke-vu-cmd-page-up ()
   (interactive)
   (save-excursion
     (let ((window (get-buffer-window (current-buffer))))
       (setq-local start-byte-offset
                   (- start-byte-offset (* (- (window-height) 1) #x10)))
-      (poke-vu-refresh))))
+      (poke-vu-refresh)))
+  (let ((offset (poke-vu-byte-at-point)))
+    (if offset
+        (poke-vu-goto-byte offset))))
+
+(defconst poke-vu-bytes-per-line 16)
+
+(defun poke-vu-bol-byte ()
+  "Return the byte offset of the first byte in the current line."
+  (+ start-byte-offset
+     (* (- (line-number-at-pos) 1) poke-vu-bytes-per-line)))
+
+(defun poke-vu-byte-at-point ()
+  "Return the byte offset at the current point in the *poke-vu* buffer."
+  (let ((bol-byte (poke-vu-bol-byte))
+        (column (- (point) (save-excursion
+                             (beginning-of-line)
+                             (point)))))
+    (pcase column
+      ;; Too tired now to get an algebraic solution for this.
+      (10 (+ bol-byte 0)) (12 (+ bol-byte 1)) (15 (+ bol-byte 2))
+      (17 (+ bol-byte 3)) (20 (+ bol-byte 4)) (22 (+ bol-byte 5))
+      (25 (+ bol-byte 6)) (27 (+ bol-byte 7)) (30 (+ bol-byte 8))
+      (32 (+ bol-byte 9)) (35 (+ bol-byte 10)) (37 (+ bol-byte 11))
+      (40 (+ bol-byte 12)) (42 (+ bol-byte 13)) (45 (+ bol-byte 14))
+      (47 (+ bol-byte 15))
+      (_ nil))))
+
+(defun poke-vu-byte-pos (offset)
+  "Return the position in the current poke-vu buffer
+corresponding to the given offset.
+
+If the current buffer is not showing the given byte offset,
+return nil."
+  (when (and (>= offset start-byte-offset)
+             (<= offset (+ start-byte-offset
+                           (* (count-lines (point-min) (point-max))
+                              poke-vu-bytes-per-line))))
+    (save-excursion
+      (let ((lineno (+ (/ (- offset start-byte-offset)
+                          poke-vu-bytes-per-line)
+                       1)))
+        (goto-line lineno)
+        (let* ((lineoffset (- offset (poke-vu-bol-byte)))
+               (column  (+ 10
+                           (* 2 lineoffset)
+                           (/ lineoffset 2))))
+          (forward-char column)
+          (point))))))
 
 (defun poke-vu-goto-byte (offset)
+  "Move the pointer to the beginning of the byte at OFFSET
+relative to the beginning of the shown IO space."
+  (let ((byte-pos (poke-vu-byte-pos offset)))
+    (unless byte-pos
+      ;; Scroll so the desired byte is in the first line.
+      (setq start-byte-offset (- offset
+                                 (% offset poke-vu-bytes-per-line)))
+      (process-put poke-vu-process 'poke-current-position
+                   offset)
+      (poke-vu-refresh)
+      (setq byte-pos (poke-vu-byte-pos offset)))
+    ;; Move the point where the byte at the given offset is.
+    (goto-char byte-pos)
+    ;; XXX install overlays here and in ascii
+    (message (format "0x%x#B" offset))))
+
+(defun poke-vu-cmd-goto-byte (offset)
   (interactive "nGoto byte: ")
-  (save-excursion
-    (set-buffer "*poke-vu*")
-    (setq-local start-byte-offset offset)
-    (poke-vu-refresh)))
+  (poke-vu-goto-byte offset))
+
+(defun poke-vu-cmd-backward-char ()
+  (interactive)
+  (let ((offset (poke-vu-byte-at-point)))
+    (if offset
+        (poke-vu-goto-byte
+         (if (equal offset 0) 0 (- offset 1)))
+      (backward-char))))
+
+(defun poke-vu-cmd-forward-char ()
+  (interactive)
+  (let ((offset (poke-vu-byte-at-point)))
+    (if offset
+        (poke-vu-goto-byte (+ offset 1))
+      (forward-char))))
+
+(defun poke-vu-cmd-move-beginning-of-line ()
+  (interactive)
+  (poke-vu-goto-byte (poke-vu-bol-byte)))
+
+(defun poke-vu-cmd-move-end-of-line ()
+  (interactive)
+  (poke-vu-goto-byte (1- (+ (poke-vu-bol-byte)
+                           poke-vu-bytes-per-line))))
+
+(defun poke-vu-cmd-copy-byte-offset-as-kill ()
+  (interactive)
+  (let ((offset (poke-vu-byte-at-point)))
+    (when offset
+      (let ((string (format "0x%x#B" offset)))
+        (if (eq last-command 'kill-region)
+            (kill-append string nil)
+          (kill-new string))
+        (message "%s" string)))))
 
 (defun poke-vu-mode ()
   "A major mode for Poke vu output.
@@ -486,11 +591,16 @@ Commands:
   (kill-all-local-variables)
   (setq poke-vu-mode-map (make-keymap))
   (use-local-map  poke-vu-mode-map)
-  (define-key poke-vu-mode-map "\C-n" 'poke-vu-next-line)
-  (define-key poke-vu-mode-map "\C-p" 'poke-vu-prev-line)
-  (define-key poke-vu-mode-map "\C-v" 'poke-vu-page-down)
-  (define-key poke-vu-mode-map "\M-v" 'poke-vu-page-up)
-  (define-key poke-vu-mode-map "\C-cg" 'poke-vu-goto-byte)
+  (define-key poke-vu-mode-map "\C-v" 'poke-vu-cmd-page-down)
+  (define-key poke-vu-mode-map "\M-v" 'poke-vu-cmd-page-up)
+  (define-key poke-vu-mode-map "\C-a" 'poke-vu-cmd-move-beginning-of-line)
+  (define-key poke-vu-mode-map "\C-e" 'poke-vu-cmd-move-end-of-line)
+  (define-key poke-vu-mode-map "\C-b" 'poke-vu-cmd-backward-char)
+  (define-key poke-vu-mode-map "\C-f" 'poke-vu-cmd-forward-char)
+  (define-key poke-vu-mode-map "\C-p" 'poke-vu-cmd-previous-line)
+  (define-key poke-vu-mode-map "\C-n" 'poke-vu-cmd-next-line)
+  (define-key poke-vu-mode-map "\C-cg" 'poke-vu-cmd-goto-byte)
+  (define-key poke-vu-mode-map "w" 'poke-vu-cmd-copy-byte-offset-as-kill)
   (setq-local font-lock-defaults '(poke-vu-font-lock))
   (setq-local start-byte-offset 0)
   (setq-local header-line-format
@@ -506,6 +616,7 @@ Commands:
           (poke-make-pokelet-process-new "poke-vu" "\x82"
                                          #'poke-vu-handle-cmd))
     (process-put poke-vu-process 'poke-vu-output "")
+    (process-put poke-vu-process 'poke-current-position 0)
     (save-excursion
      (set-buffer "*poke-vu*")
      (poke-vu-mode)))
@@ -524,6 +635,10 @@ Commands:
          (window (get-buffer-window buffer)))
     (when (and (process-live-p poke-vu-process)
                window)
+      (save-excursion
+        (set-buffer buffer)
+        (process-put poke-vu-process 'poke-current-position
+                     (point)))
       ;; Note we are assuming each VU line contains 0x10 bytes.
       (poke-code-send (concat "{vu "
                               ":from " (number-to-string
