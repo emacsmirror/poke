@@ -89,6 +89,8 @@
   "Face for error messages.")
 (defface poke-warning-face '((t :foreground "yellow"))
   "Face for warning messages.")
+(defface poke-vu-selected-byte-face '((t :background "yellow"))
+  "Face for selected byte in poke-vu buffers.")
 
 ;;;; Poke styling classes
 
@@ -541,7 +543,17 @@ relative to the beginning of the shown IO space."
       (setq byte-pos (poke-vu-byte-pos offset)))
     ;; Move the point where the byte at the given offset is.
     (goto-char byte-pos)
-    ;; XXX install overlays here and in ascii
+    ;; Update selected-byte overlays
+    (remove-overlays (point-min) (point-max)
+                     'face 'poke-vu-selected-byte-face)
+    (overlay-put (make-overlay (point) (+ (point) 2))
+                 'face 'poke-vu-selected-byte-face)
+    (let ((ascii-point (+
+                        (save-excursion (beginning-of-line) (point))
+                        50 (- offset (poke-vu-bol-byte))
+                        1)))
+      (overlay-put (make-overlay ascii-point (+ ascii-point 1))
+                   'face 'poke-vu-selected-byte-face)))
     (message (format "0x%x#B" offset))))
 
 (defun poke-vu-cmd-goto-byte (offset)
