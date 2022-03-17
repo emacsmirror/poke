@@ -1,4 +1,4 @@
-;;; poke.el --- Emacs interface to GNU poke
+;; poke.el --- Emacs interface to GNU poke
 
 ;; Copyright (C) 2022  Jose E. Marchesi
 ;; Author: Jose E. Marchesi <jemarch@gnu.org>
@@ -49,6 +49,7 @@
 (require 'subr-x)
 (require 'tabulated-list)
 (require 'poke-mode)
+(require 'widget)
 
 ;;;; First, some utilities
 
@@ -442,12 +443,6 @@ Commands:
     (2 ;; APPEND
      (process-put proc 'poke-vu-output
                   (concat (process-get proc 'poke-vu-output) data)))
-    (3 ;; HIGHLIGHT
-     ;; XXX
-     )
-    (4 ;; FILTER
-     ;; XXX
-     )
     (5 ;; FINISH
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
@@ -456,6 +451,10 @@ Commands:
            (insert (process-get proc 'poke-vu-output))
            (goto-char current-pos))))
      (process-put proc 'poke-vu-output ""))
+    (3 ;; HIGHLIGHT
+     )
+    (4 ;; FILTER
+     )
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
      (process-put proc 'pokelet-msg-lenght 0)
@@ -580,6 +579,7 @@ relative to the beginning of the shown IO space."
       (setq byte-pos (poke-vu-byte-pos offset)))
     ;; Move the point where the byte at the given offset is.
     (goto-char byte-pos)
+    (setq current-pos byte-pos)
     ;; Update selected-byte overlays
     (remove-overlays (point-min) (point-max)
                      'face 'poke-vu-selected-byte-face)
@@ -747,6 +747,7 @@ fun plet_elval = (string s) void:
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "\C-ci") 'poke-repl-cmd-goto-ios)
     (define-key map (kbd "\C-cc") 'poke-repl-cmd-goto-code)
+    (define-key map (kbd "\C-cs") 'poke-repl-cmd-goto-settings)
     map)
   "Local keymap for `poke-repl-mode' buffers.")
 
@@ -759,6 +760,11 @@ fun plet_elval = (string s) void:
   (interactive)
   (poke-code)
   (switch-to-buffer-other-window "*poke-code*"))
+
+(defun poke-repl-cmd-goto-settings ()
+  (interactive)
+  (poke-settings)
+  (switch-to-buffer-other-window "*poke-settings*"))
 
 (define-derived-mode poke-repl-mode comint-mode "poke"
   "Major mode for the poke repl.
@@ -940,6 +946,53 @@ fun plet_elval = (string s) void:
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-ios*")))
 
+;;;; poke-settings
+
+;; Note the following default values must match
+;; of the default settings of poke. XXX set as default
+;; when starting.
+(defvar poke-setting-pretty-print "no")
+(defvar poke-setting-omode "plain")
+
+(defun poke-settings-create-widgets ()
+  (kill-all-local-variables)
+  (let ((inhibit-read-only t))
+    (erase-buffer))
+  (remove-overlays)
+  (widget-insert "Output mode:\n")
+  (widget-create 'radio-button-choice
+                 :value poke-setting-omode
+                 :notify (lambda (widget &rest ignore)
+                           (let ((option (if (equal (widget-value widget) "plain")
+                                             "VM_OMODE_PLAIN"
+                                           "VM_OMODE_TREE")))
+                             (poke-code-send (concat "vm_set_omode (" option ");"))
+                             (setq poke-setting-omode (widget-value widget))))
+                 '(item "plain") '(item "tree"))
+  (widget-insert "\n")
+  (widget-insert "Pretty-print:\n")
+  (widget-create 'radio-button-choice
+                 :value poke-setting-pretty-print
+                 :notify (lambda (widget &rest ignore)
+                           (let ((bool (if (equal (widget-value widget) "yes")
+                                           "1" "0")))
+                             (poke-code-send (concat "vm_set_opprint (" bool ");"))
+                             (setq poke-setting-pretty-print (widget-value widget))))
+                 '(item "yes") '(item "no"))
+  (widget-insert "\n")
+  (use-local-map widget-keymap)
+  (widget-setup))
+
+(defun poke-settings ()
+  (interactive)
+  (let ((buf (get-buffer "*poke-settings*")))
+    (unless buf
+      (setq buf (get-buffer-create "*poke-settings*"))
+      (with-current-buffer buf
+        (poke-settings-create-widgets))))
+  (when (called-interactively-p)
+    (switch-to-buffer-other-window "*poke-settings*")))
+
 ;;;; Main interface
 
 (defconst poke-pk
@@ -992,29 +1045,6 @@ fun quit = void:
   plet_elval (\"(poke-exit)\");
 }")
 
-(defun poke-open-file (filename)
-  (interactive "fFile to open: ")
-  ;; XXX: quote filename if needed
-  (poke-code-send
-   (concat "{ set_ios (open (\"" filename "\")); } ?! E_io;")))
-
-(defun poke-load-file (filename)
-  (interactive "fPickle to load: ")
-  (poke-code-send (concat "load \"" filename "\";")))
-
-(defun poke-set-omode ()
-  (interactive)
-  (let* ((omode (completing-read "Output mode: " '("VM_OMODE_PLAIN" "VM_OMODE_TREE") nil t)))
-    (poke-code-send (concat "vm_set_omode (" omode ");"))))
-
-(defun poke-set-pretty-print ()
-  (interactive)
-  (let* ((pprint (completing-read "Pretty-print: " '("yes" "no") nil t)))
-    (poke-code-send (concat "vm_set_opprint ("
-                            (if (equal pprint "yes")
-                                (number-to-string 1)
-                              (number-to-string 0)) ");"))))
-
 (defun poke ()
   (interactive)
   (when (not (process-live-p poke-poked-process))
@@ -1039,7 +1069,8 @@ fun quit = void:
      (let ((buf (get-buffer bufname)))
        (when buf (kill-buffer buf))))
    '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
-     "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"))
+     "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"
+     "*poke-settings*"))
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
