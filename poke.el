@@ -51,6 +51,11 @@
 (require 'poke-mode)
 (require 'widget)
 
+;;;; Configurable settings
+
+(defvar poke-setting-pretty-print "no")
+(defvar poke-setting-omode "plain")
+
 ;;;; First, some utilities
 
 (defun poke-decode-u64-le (seq)
@@ -948,12 +953,6 @@ fun plet_elval = (string s) void:
 
 ;;;; poke-settings
 
-;; Note the following default values must match
-;; of the default settings of poke. XXX set as default
-;; when starting.
-(defvar poke-setting-pretty-print "no")
-(defvar poke-setting-omode "plain")
-
 (defun poke-settings-create-widgets ()
   (kill-all-local-variables)
   (let ((inhibit-read-only t))
@@ -1045,6 +1044,16 @@ fun quit = void:
   plet_elval (\"(poke-exit)\");
 }")
 
+(defun poke-init-settings ()
+  (poke-code-send (concat "vm_set_omode ("
+                          (if (equal poke-setting-omode "plain")
+                              "VM_OMODE_PLAIN"
+                            "VM_OMODE_TREE")
+                          ");"))
+  (poke-code-send (concat "vm_set_opprint ("
+                          (if (equal poke-setting-pretty-print "yes")
+                              "1" "0")
+                          ");")))
 (defun poke ()
   (interactive)
   (when (not (process-live-p poke-poked-process))
@@ -1053,6 +1062,7 @@ fun quit = void:
     (sit-for 0.2))
   (poke-elval)
   (poke-code-send poke-pk)
+  (poke-init-settings)
   (poke-repl)
   (poke-vu)
   (delete-other-windows)
@@ -1074,4 +1084,5 @@ fun quit = void:
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
+(provide 'poke)
 ;;; poke.el ends here
