@@ -1,4 +1,4 @@
-;; poke.el --- Emacs interface to GNU poke
+;; poke.el --- Emacs meets GNU poke!
 
 ;; Copyright (C) 2022  Jose E. Marchesi
 ;; Author: Jose E. Marchesi <jemarch@gnu.org>
@@ -93,6 +93,8 @@
   "Face for warning messages.")
 (defface poke-vu-selected-byte-face '((t :background "yellow"))
   "Face for selected byte in poke-vu buffers.")
+(defface poke-edit-header-face '((t :bold t))
+  "Face for editor headers.")
 
 ;;;; Poke styling classes
 
@@ -251,7 +253,7 @@
                                (point-max)))
            (let ((buffer-read-only nil))
              (mapcar (lambda (window)
-                       (set-window-point window (point-max)))
+                       (set-window-point window (point-min)))
                      (get-buffer-window-list))))))
      (process-put proc 'poke-out-emitted-iter-string nil)
      (when (process-live-p poke-repl-process)
@@ -748,6 +750,7 @@ fun plet_elval = (string s) void:
     (define-key map (kbd "\C-ci") 'poke-ios)
     (define-key map (kbd "\C-cc") 'poke-code)
     (define-key map (kbd "\C-cs") 'poke-settings)
+    (define-key map (kbd "\C-cm") 'poke-maps)
     map)
   "Local keymap for `poke-repl-mode' buffers.")
 
@@ -796,9 +799,19 @@ fun plet_elval = (string s) void:
           (buffer-read-only nil)
           (lb (- (line-beginning-position) 5)))
       (comint-output-filter poke-repl-process (format "#%s\n" id))
-      (if (string-match "^[ \t]*\\(var\\|type\\|unit\\|fun\\) " input)
-          (poke-code-send (concat input ";"))
-        (poke-cmd-send (concat input ";")))))
+      (cond
+       ((string-match "^[ \t]*\\(var\\|type\\|unit\\|fun\\) " input)
+        (poke-code-send (concat input ";")))
+       ((string-match "^[ \t]*@ \\(.*\\)" input)
+        (poke-code-send (concat "poke_el_map ("
+                                "\"" (match-string 1 input) "\""
+                                ");")))
+       ((string-match "^[ \t]*! \\(.*\\)" input)
+        (poke-code-send (concat "poke_el_edit ("
+                                "\"" (match-string 1 input) "\""
+                                ");")))
+       (t
+        (poke-cmd-send (concat input ";"))))))
   (poke-vu-refresh)
   (comint-output-filter poke-repl-process poke-repl-prompt))
 
@@ -909,7 +922,6 @@ fun plet_elval = (string s) void:
                               (ios-handler (cadr ios))
                               (ios-flags (caddr ios))
                               (ios-size (cadddr ios)))
-                          ;; XXX interpret flags.
                           (list ios-id (vector (number-to-string ios-id)
                                                ios-handler
                                                ios-flags
@@ -930,6 +942,217 @@ fun plet_elval = (string s) void:
       (poke-ios-update-overlay)))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-ios*")))
+
+;;;; poke-edit
+
+(defun poke-edit (name)
+  (poke-code-send (concat "poke_el_edit_1 ("
+                          "\"" name "\", "
+                          name ", "
+                          "typeof (" name "));")))
+
+(defun poke-edit-1 (name type typekind elements)
+  (let ((buf (get-buffer-create "*poke-edit*")))
+    (with-current-buffer buf
+      (kill-all-local-variables)
+      (let ((inhibit-read-only t))
+        (erase-buffer))
+      (remove-overlays)
+      (widget-insert (concat (propertize name
+                                         'font-lock-face
+                                         'poke-edit-header-face)
+                             " = "
+                             type
+                             "\n"))
+      (widget-insert (concat "  "
+                             (pcase typekind
+                               ("struct" "{")
+                               ("array" "[")
+                               (_ ""))
+                             "\n"))
+      (mapcar
+       (lambda (elem)
+         (let ((elem-name (car elem))
+               (elem-value (cadr elem)))
+           (widget-create 'editable-field
+                          :size 30
+                          :format (concat "    "
+                                          (propertize elem-name
+                                                      'font-lock-face
+                                                      'poke-struct-field-name-face) "=" "%v,")
+                          :action `(lambda (widget event)
+                                    (poke-code-send
+                                     (concat ,name
+                                             (if (equal ,typekind "struct")
+                                                 "."
+                                               "")
+                                             ,elem-name
+                                             " = "
+                                             (widget-value widget)
+                                             ";")))
+                          elem-value)
+           (widget-insert "\n")))
+       elements)
+      (widget-insert (concat "  " (pcase typekind
+                               ("struct" "}")
+                               ("array" "]")
+                               (_ ""))
+                             "\n"))
+      (use-local-map widget-keymap)
+      (widget-setup)
+      (goto-char (point-min))))
+  (switch-to-buffer-other-window "*poke-edit*"))
+
+;;;; poke-maps
+
+(defvar poke-maps-stack '(nil)
+  "Stack of map listings.
+Each entry in the stack is a list of strings, and may be empty.")
+
+(defun poke-maps-add-var (name)
+  (poke-code-send (concat "poke_el_map_1 ("
+                          "\"" name "\", "
+                          name ", "
+                          "typeof (" name "));")))
+
+(defun poke-maps-add-elems (name)
+  (poke-code-send (concat "poke_el_map_elems ("
+                          "\"" name "\", "
+                          name ", "
+                          "typeof (" name "));")))
+
+(defun poke-maps-add (name type offset)
+  "Add a new entry in the current map listing."
+  (setq poke-maps-stack
+        (cons
+         (cons
+          (list nil name type offset)
+          (car poke-maps-stack))
+         (cdr poke-maps-stack)))
+  (poke-maps-populate)
+  (poke-maps-do-line))
+
+(defun poke-maps-populate ()
+  "Populate a `poke-maps-mode' buffer with the map listing
+at the top of the `poke-maps-stack' stack."
+  (when (get-buffer "*poke-maps*")
+    (save-excursion
+      (set-buffer "*poke-maps*")
+      (let ((headers [("" 3 nil) ("Offset" 20 nil) ("Name" 30 nil)])
+            (entries (mapcar
+                      (lambda (map)
+                        (let ((map-mark (if (car map) "#" ""))
+                              (map-name (cadr map))
+                              (map-type (caddr map))
+                              (map-offset (cadddr map)))
+                          (list map-name (vector map-mark
+                                                 (if (equal (% map-offset 8) 0)
+                                                     (format "0x%08x#B" (/ map-offset 8))
+                                                   (format "0x%016x#b" map-offset))
+                                                 map-name
+                                                 ))))
+                      (car poke-maps-stack))))
+        (setq tabulated-list-format headers)
+        (setq tabulated-list-padding 2)
+        (tabulated-list-init-header)
+        (setq tabulated-list-entries entries)
+        (tabulated-list-print nil)))))
+
+(defun poke-maps-do-line ()
+  (poke-maps-update-overlay)
+  (let ((name (tabulated-list-get-id)))
+    (when name
+      (poke-code-send (concat "printf \"%Tv\","
+                              (tabulated-list-get-id)
+                              ";")))))
+
+(defun poke-maps-cmd-next ()
+  "Move to the next line in the *poke-maps* buffer."
+  (interactive)
+  (forward-line 1)
+  (poke-maps-do-line))
+
+(defun poke-maps-cmd-prev ()
+  "Move to the previous line in the *poke-maps* buffer."
+  (interactive)
+  (previous-line 1)
+  (poke-maps-do-line))
+
+(defun poke-maps-cmd-sub ()
+  (interactive)
+  (let ((name (tabulated-list-get-id)))
+    (when name
+      (setq poke-maps-stack (cons 'nil poke-maps-stack))
+      (poke-maps-add-elems name))))
+
+(defun poke-maps-cmd-parent ()
+  (interactive)
+  (if (equal (length poke-maps-stack) 1)
+      (message "At the top-level.")
+    (setq poke-maps-stack (cdr poke-maps-stack))
+    (poke-maps-populate)
+    (poke-maps-do-line)))
+
+(defun poke-maps-cmd-edit ()
+  (interactive)
+  (let ((var (tabulated-list-get-id)))
+    (poke-edit var)))
+
+(defun poke-maps-cmd-scroll-out-up ()
+  (interactive)
+  (let ((buf (get-buffer "*poke-out*"))
+        (cur-window (get-buffer-window)))
+    (when buf
+      (save-excursion
+        (set-buffer buf)
+        (ignore-errors
+          (mapcar (lambda (window)
+                    (select-window window)
+                    (scroll-up))
+                  (get-buffer-window-list)))
+        (select-window cur-window)))))
+
+(defvar poke-maps-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "RET") 'poke-maps-cmd-sub)
+    (define-key map (kbd "SPC") 'poke-maps-cmd-scroll-out-up)
+    (define-key map (kbd "u") 'poke-maps-cmd-parent)
+    (define-key map (kbd "#") 'poke-maps-cmd-mark)
+    (define-key map (kbd "n") 'poke-maps-cmd-next)
+    (define-key map (kbd "p") 'poke-maps-cmd-prev)
+    (define-key map (kbd "e") 'poke-maps-cmd-edit)
+    map)
+  "Local keymap for `poke-maps-mode' buffer.")
+
+(define-derived-mode poke-maps-mode tabulated-list-mode "poke-maps"
+    "Major mode for listing the maps in poke.
+\\<poke-maps-mode-map>
+\\{poke-maps-mode-map}"
+  (setq tabulated-list-format nil)
+  (setq tabulated-list-padding 2)
+  (setq tabulated-list-sort-key nil)
+  (tabulated-list-init-header))
+
+(defvar-local poke-maps-overlay nil
+  "The overlay on a highlighted poke-maps line.")
+
+(defun poke-maps-update-overlay ()
+  (unless poke-maps-overlay
+    (setq poke-maps-overlay (make-overlay (point) (point))))
+  (move-overlay poke-maps-overlay
+                (line-beginning-position)
+                (line-end-position))
+  (overlay-put poke-maps-overlay 'face 'highlight))
+
+(defun poke-maps ()
+  (interactive)
+  (let ((buf (get-buffer-create "*poke-maps*")))
+    (with-current-buffer buf
+      (poke-maps-mode)
+      (poke-maps-populate)
+      (poke-maps-update-overlay)))
+  (when (called-interactively-p)
+    (switch-to-buffer-other-window "*poke-maps*")))
 
 ;;;; poke-settings
 
@@ -1037,6 +1260,62 @@ ios_open_hook += [poke_el_ios_open];
 ios_close_hook += [poke_el_ios_close];
 ios_set_hook += [poke_el_ios_set];
 
+fun poke_el_edit = (string name) void:
+{
+  var cmd = format (\"(poke-edit \\\"%s\\\")\", name);
+  plet_elval (cmd);
+}
+
+fun poke_el_edit_1 = (string name, any val, Pk_Type valtype) void:
+{
+  var typekind = valtype.code == PK_TYPE_INTEGRAL ? \"integral\"
+                 : valtype.code == PK_TYPE_STRUCT ? \"struct\"
+                 : valtype.code == PK_TYPE_ARRAY ? \"array\"
+                 : valtype.code == PK_TYPE_STRING ? \"string\"
+                 : valtype.code == PK_TYPE_FUNCTION ? \"function\"
+                 : valtype.code == PK_TYPE_OFFSET ? \"offset\"
+                 : \"\";
+
+  var eleminfo = \"'(\";
+  if (valtype.code in [PK_TYPE_ARRAY, PK_TYPE_STRUCT])
+  {
+    for (var i = 0UL; i < val'length; ++i)
+      eleminfo += format (\"(\\\"%s\\\" \\\"%s\\\") \", val'ename (i), \"XXX\");
+  }
+  eleminfo += \")\";
+
+  var cmd = format (\"(poke-edit-1 \\\"%s\\\" \\\"%s\\\" \\\"%s\\\" %s)\"
+                    name, valtype.name, typekind, eleminfo);
+  plet_elval (cmd);
+}
+
+fun poke_el_map = (string name) void:
+{
+  var cmd = format (\"(poke-maps-add-var \\\"%s\\\")\", name);
+  plet_elval (cmd);
+}
+
+fun poke_el_map_elems = (string name, any val, Pk_Type valtype) void:
+{
+  if (!val'mapped)
+    return;
+
+  for (var i = val'length - 1; i >= 0; --i)
+    poke_el_map (name
+                 + ((val'ename (i))[0] == '[' ? \"\" : \".\")
+                 + val'ename (i));
+}
+
+fun poke_el_map_1 = (string name, any val, Pk_Type valtype) void:
+{
+  if (!val'mapped)
+    return;
+
+  var cmd = format (\"(poke-maps-add \\\"%s\\\" \\\"%s\\\" %u64d)\"
+                    name, valtype.name, val'offset/#b);
+  plet_elval (cmd);
+}
+
 fun quit = void:
 {
   plet_elval (\"(poke-exit)\");
@@ -1046,6 +1325,7 @@ fun quit = void:
   (interactive)
   (when (not (process-live-p poke-poked-process))
     (setq poke-ios-alist nil)
+    (setq poke-maps-stack '(nil))
     (poke-poked)
     (sit-for 0.2))
   (poke-elval)
@@ -1068,7 +1348,7 @@ fun quit = void:
        (when buf (kill-buffer buf))))
    '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
      "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"
-     "*poke-settings*"))
+     "*poke-settings*" "*poke-maps*"))
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
