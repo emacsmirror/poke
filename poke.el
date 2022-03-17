@@ -454,7 +454,7 @@ Commands:
          (let ((buffer-read-only nil))
            (delete-region (point-min) (point-max))
            (insert (process-get proc 'poke-vu-output))
-           (poke-vu-goto-byte current-byte))))
+           (goto-char current-pos))))
      (process-put proc 'poke-vu-output ""))
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
@@ -575,7 +575,7 @@ relative to the beginning of the shown IO space."
       ;; Scroll so the desired byte is in the first line.
       (setq start-byte-offset (- offset
                                  (% offset poke-vu-bytes-per-line)))
-      (setq current-byte offset)
+      (setq current-pos byte-pos)
       (poke-vu-refresh)
       (setq byte-pos (poke-vu-byte-pos offset)))
     ;; Move the point where the byte at the given offset is.
@@ -655,7 +655,7 @@ Commands:
   (setq-local start-byte-offset 0)
   (setq-local header-line-format
               "76543210  0011 2233 4455 6677 8899 aabb ccdd eeff  0123456789ABCDEF")
-  (setq-local current-byte 0)
+  (setq-local current-pos 0)
   (setq mode-name "poke-vu")
   (setq major-mode 'poke-vu-mode)
   (read-only-mode t))
