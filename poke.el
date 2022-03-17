@@ -51,11 +51,6 @@
 (require 'poke-mode)
 (require 'widget)
 
-;;;; Configurable settings
-
-(defvar poke-setting-pretty-print "no")
-(defvar poke-setting-omode "plain")
-
 ;;;; First, some utilities
 
 (defun poke-decode-u64-le (seq)
@@ -953,6 +948,29 @@ fun plet_elval = (string s) void:
 
 ;;;; poke-settings
 
+(defvar poke-setting-pretty-print "no")
+(defvar poke-setting-omode "plain")
+
+(defun poke-setting-set-pretty-print (val)
+  (unless (member val '("yes" "no"))
+    (error "Invalid setting for pretty-print.  Expected \"yes\" or \"no\"."))
+  (poke-code-send (concat "vm_set_opprint ("
+                          (if (equal val "yes") "1" "0")
+                          ");")))
+
+(defun poke-setting-set-omode (val)
+  (unless (member val '("plain" "tree"))
+    (error "Invalid setting for pretty-print.  Expected \"plain\" or \"tree\"."))
+  (poke-code-send (concat "vm_set_omode ("
+                          (if (equal val "plain")
+                              "VM_OMODE_PLAIN"
+                            "VM_OMODE_TREE")
+                          ");")))
+
+(defun poke-init-settings ()
+  (poke-setting-set-pretty-print poke-setting-pretty-print)
+  (poke-setting-set-omode poke-setting-omode))
+
 (defun poke-settings-create-widgets ()
   (kill-all-local-variables)
   (let ((inhibit-read-only t))
@@ -962,21 +980,16 @@ fun plet_elval = (string s) void:
   (widget-create 'radio-button-choice
                  :value poke-setting-omode
                  :notify (lambda (widget &rest ignore)
-                           (let ((option (if (equal (widget-value widget) "plain")
-                                             "VM_OMODE_PLAIN"
-                                           "VM_OMODE_TREE")))
-                             (poke-code-send (concat "vm_set_omode (" option ");"))
-                             (setq poke-setting-omode (widget-value widget))))
+                           (poke-setting-set-omode (widget-value widget))
+                           (setq poke-setting-omode (widget-value widget)))
                  '(item "plain") '(item "tree"))
   (widget-insert "\n")
   (widget-insert "Pretty-print:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-pretty-print
                  :notify (lambda (widget &rest ignore)
-                           (let ((bool (if (equal (widget-value widget) "yes")
-                                           "1" "0")))
-                             (poke-code-send (concat "vm_set_opprint (" bool ");"))
-                             (setq poke-setting-pretty-print (widget-value widget))))
+                           (poke-setting-set-pretty-print (widget-value widget))
+                           (setq poke-setting-pretty-print (widget-value widget)))
                  '(item "yes") '(item "no"))
   (widget-insert "\n")
   (use-local-map widget-keymap)
@@ -1044,16 +1057,6 @@ fun quit = void:
   plet_elval (\"(poke-exit)\");
 }")
 
-(defun poke-init-settings ()
-  (poke-code-send (concat "vm_set_omode ("
-                          (if (equal poke-setting-omode "plain")
-                              "VM_OMODE_PLAIN"
-                            "VM_OMODE_TREE")
-                          ");"))
-  (poke-code-send (concat "vm_set_opprint ("
-                          (if (equal poke-setting-pretty-print "yes")
-                              "1" "0")
-                          ");")))
 (defun poke ()
   (interactive)
   (when (not (process-live-p poke-poked-process))
