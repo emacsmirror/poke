@@ -745,26 +745,11 @@ fun plet_elval = (string s) void:
 
 (defvar poke-repl-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "\C-ci") 'poke-repl-cmd-goto-ios)
-    (define-key map (kbd "\C-cc") 'poke-repl-cmd-goto-code)
-    (define-key map (kbd "\C-cs") 'poke-repl-cmd-goto-settings)
+    (define-key map (kbd "\C-ci") 'poke-ios)
+    (define-key map (kbd "\C-cc") 'poke-code)
+    (define-key map (kbd "\C-cs") 'poke-settings)
     map)
   "Local keymap for `poke-repl-mode' buffers.")
-
-(defun poke-repl-cmd-goto-ios ()
-  (interactive)
-  (poke-ios)
-  (switch-to-buffer-other-window "*poke-ios*"))
-
-(defun poke-repl-cmd-goto-code ()
-  (interactive)
-  (poke-code)
-  (switch-to-buffer-other-window "*poke-code*"))
-
-(defun poke-repl-cmd-goto-settings ()
-  (interactive)
-  (poke-settings)
-  (switch-to-buffer-other-window "*poke-settings*"))
 
 (define-derived-mode poke-repl-mode comint-mode "poke"
   "Major mode for the poke repl.
