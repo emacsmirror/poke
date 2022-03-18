@@ -50,6 +50,7 @@
 (require 'tabulated-list)
 (require 'poke-mode)
 (require 'widget)
+(require 'cl)
 
 ;;;; First, some utilities
 
@@ -951,14 +952,37 @@ fun plet_elval = (string s) void:
                           name ", "
                           "typeof (" name "));")))
 
-(defun poke-edit-1 (name type typekind elements)
+(defun poke-edit-1 (name type typekind elems)
+  (let* ((elem-names "")
+         (elem-values ""))
+    (mapcar
+     (lambda (ename)
+       (setq elem-names (concat elem-names "\"" ename "\",")))
+     elems)
+    (mapcar
+     (lambda (ename)
+       (setq elem-values (concat elem-values "format (\"%v\", "
+                                 "(" name ")"
+                                 (if (equal (aref ename 0) ?\[) "" ".")
+                                 ename "),")))
+     elems)
+    (poke-code-send
+     (concat "poke_el_edit_2 ("
+             "\"" name "\", "
+             name ", "
+             "typeof (" name "), "
+             "[" elem-names "], "
+             "[" elem-values "]);"))))
+
+(defun poke-edit-2 (name type typekind elem-names elem-values)
   (let ((buf (get-buffer-create "*poke-edit*")))
     (with-current-buffer buf
       (kill-all-local-variables)
       (setq-local edit-name name)
       (setq-local edit-type type)
       (setq-local edit-typekind typekind)
-      (setq-local edit-elements elements)
+      (setq-local edit-elem-names elem-names)
+      (setq-local edit-elem-values elem-values)
       (poke-edit-do-buffer)
       (switch-to-buffer-other-window "*poke-edit*"))))
 
@@ -978,30 +1002,29 @@ fun plet_elval = (string s) void:
                            ("array" "[")
                            (_ ""))
                          "\n"))
-  (mapcar
-   (lambda (elem)
-     (let ((elem-name (car elem))
-           (elem-value (cadr elem)))
-       (widget-create 'editable-field
-                      :size 30
-                      :format (concat "    "
-                                      (propertize elem-name
-                                                  'font-lock-face
-                                                  'poke-struct-field-name-face) "=" "%v,")
-                      :action `(lambda (widget event)
-                                 (poke-code-send
-                                  (concat "(" ,edit-name ")"
-                                          (if (equal ,edit-typekind "struct")
-                                              "."
-                                            "")
-                                          ,elem-name
-                                          " = "
-                                          (widget-value widget)
-                                          ";"
-                                          "plet_elval (\"(poke-edit-after)\");")))
-                      elem-value)
-       (widget-insert "\n")))
-   edit-elements)
+  (mapcar*
+   (lambda (elem-name elem-value)
+     (widget-create 'editable-field
+                    :size 0
+                    :format (concat "    "
+                                    (propertize elem-name
+                                                'font-lock-face
+                                                'poke-struct-field-name-face) "=" "%v,")
+                    :action `(lambda (widget event)
+                               (poke-code-send
+                                (concat "(" ,edit-name ")"
+                                        (if (equal ,edit-typekind "struct")
+                                            "."
+                                          "")
+                                        ,elem-name
+                                        " = "
+                                        (widget-value widget)
+                                        ";"
+                                        "plet_elval (\"(poke-edit-after)\");")))
+                    elem-value)
+     (widget-insert "\n"))
+   edit-elem-names
+   edit-elem-values)
   (widget-insert (concat "  " (pcase edit-typekind
                                 ("struct" "}")
                                 ("array" "]")
@@ -1282,26 +1305,52 @@ fun poke_el_edit = (string name) void:
   plet_elval (cmd);
 }
 
+fun poke_el_pk_type_typekind = (Pk_Type pktype) string:
+{
+  return pktype.code == PK_TYPE_INTEGRAL ? \"integral\"
+         : pktype.code == PK_TYPE_STRUCT ? \"struct\"
+         : pktype.code == PK_TYPE_ARRAY ? \"array\"
+         : pktype.code == PK_TYPE_STRING ? \"string\"
+         : pktype.code == PK_TYPE_FUNCTION ? \"function\"
+         : pktype.code == PK_TYPE_OFFSET ? \"offset\"
+         : \"\";
+}
+
 fun poke_el_edit_1 = (string name, any val, Pk_Type valtype) void:
 {
-  var typekind = valtype.code == PK_TYPE_INTEGRAL ? \"integral\"
-                 : valtype.code == PK_TYPE_STRUCT ? \"struct\"
-                 : valtype.code == PK_TYPE_ARRAY ? \"array\"
-                 : valtype.code == PK_TYPE_STRING ? \"string\"
-                 : valtype.code == PK_TYPE_FUNCTION ? \"function\"
-                 : valtype.code == PK_TYPE_OFFSET ? \"offset\"
-                 : \"\";
+  var typekind = poke_el_pk_type_typekind (valtype);
 
-  var eleminfo = \"'(\";
+  var elem_names = \"'(\";
   if (valtype.code in [PK_TYPE_ARRAY, PK_TYPE_STRUCT])
   {
     for (var i = 0UL; i < val'length; ++i)
-      eleminfo += format (\"(\\\"%s\\\" \\\"%s\\\") \", val'ename (i), \"XXX\");
+      elem_names += \"\\\"\" + val'ename (i) + \"\\\" \";
   }
-  eleminfo += \")\";
+  elem_names += \")\";
 
   var cmd = format (\"(poke-edit-1 \\\"%s\\\" \\\"%s\\\" \\\"%s\\\" %s)\"
-                    name, valtype.name, typekind, eleminfo);
+                    name, valtype.name, typekind, elem_names);
+  plet_elval (cmd);
+}
+
+fun poke_el_edit_2 = (string name, any val, Pk_Type valtype,
+                      string[] elem_names, string[] elem_vals) void:
+{
+  var typekind = poke_el_pk_type_typekind (valtype);
+
+  var elem_names_list = \"'(\";
+  for (var i = 0UL; i < elem_names'length; ++i)
+    elem_names_list += \"\\\"\" + elem_names[i] + \"\\\" \";
+  elem_names_list += \")\";
+
+  var elem_vals_list = \"'(\";
+  for (var i = 0UL; i < elem_vals'length; ++i)
+    elem_vals_list += \"\\\"\" + elem_vals[i] + \"\\\" \";
+  elem_vals_list += \")\";
+
+  var cmd = format (\"(poke-edit-2 \\\"%s\\\" \\\"%s\\\" \\\"%s\\\" %s %s)\"
+                    name, valtype.name, typekind,
+                    elem_names_list, elem_vals_list);
   plet_elval (cmd);
 }
 
