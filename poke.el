@@ -984,7 +984,8 @@ fun plet_elval = (string s) void:
       (setq-local edit-elem-names elem-names)
       (setq-local edit-elem-values elem-values)
       (poke-edit-do-buffer)
-      (switch-to-buffer-other-window "*poke-edit*"))))
+      (when (not (get-buffer-window "*poke-edit*"))
+        (switch-to-buffer-other-window "*poke-edit*")))))
 
 (defun poke-edit-do-buffer ()   
   (let ((inhibit-read-only t))
@@ -1005,7 +1006,7 @@ fun plet_elval = (string s) void:
   (mapcar*
    (lambda (elem-name elem-value)
      (widget-create 'editable-field
-                    :size 0
+                    :size 2
                     :format (concat "    "
                                     (propertize elem-name
                                                 'font-lock-face
@@ -1038,9 +1039,8 @@ fun plet_elval = (string s) void:
   "This function is called after an edition value has been changed."
   (poke-vu-refresh)
   (let ((buf (get-buffer "*poke-edit*")))
-    (save-excursion
-      (set-buffer buf)
-      (poke-edit-do-buffer))))
+    (set-buffer buf)
+    (poke-edit edit-name)))
 
 ;;;; poke-maps
 
