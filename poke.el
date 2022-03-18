@@ -806,7 +806,7 @@ fun plet_elval = (string s) void:
         (poke-code-send (concat "poke_el_map ("
                                 "\"" (match-string 1 input) "\""
                                 ");")))
-       ((string-match "^[ \t]*! \\(.*\\)" input)
+       ((string-match "^[ \t]*= \\(.*\\)" input)
         (poke-code-send (concat "poke_el_edit ("
                                 "\"" (match-string 1 input) "\""
                                 ");")))
@@ -955,53 +955,69 @@ fun plet_elval = (string s) void:
   (let ((buf (get-buffer-create "*poke-edit*")))
     (with-current-buffer buf
       (kill-all-local-variables)
-      (let ((inhibit-read-only t))
-        (erase-buffer))
-      (remove-overlays)
-      (widget-insert (concat (propertize name
-                                         'font-lock-face
-                                         'poke-edit-header-face)
-                             " = "
-                             type
-                             "\n"))
-      (widget-insert (concat "  "
-                             (pcase typekind
-                               ("struct" "{")
-                               ("array" "[")
-                               (_ ""))
-                             "\n"))
-      (mapcar
-       (lambda (elem)
-         (let ((elem-name (car elem))
-               (elem-value (cadr elem)))
-           (widget-create 'editable-field
-                          :size 30
-                          :format (concat "    "
-                                          (propertize elem-name
-                                                      'font-lock-face
-                                                      'poke-struct-field-name-face) "=" "%v,")
-                          :action `(lambda (widget event)
-                                    (poke-code-send
-                                     (concat ,name
-                                             (if (equal ,typekind "struct")
-                                                 "."
-                                               "")
-                                             ,elem-name
-                                             " = "
-                                             (widget-value widget)
-                                             ";")))
-                          elem-value)
-           (widget-insert "\n")))
-       elements)
-      (widget-insert (concat "  " (pcase typekind
-                               ("struct" "}")
-                               ("array" "]")
-                               (_ ""))
-                             "\n"))
-      (use-local-map widget-keymap)
-      (widget-setup)
-      (goto-char (point-min))))
-  (switch-to-buffer-other-window "*poke-edit*"))
+      (setq-local edit-name name)
+      (setq-local edit-type type)
+      (setq-local edit-typekind typekind)
+      (setq-local edit-elements elements)
+      (poke-edit-do-buffer)
+      (switch-to-buffer-other-window "*poke-edit*"))))
+
+(defun poke-edit-do-buffer ()   
+  (let ((inhibit-read-only t))
+    (erase-buffer))
+  (remove-overlays)
+  (widget-insert (concat (propertize edit-name
+                                     'font-lock-face
+                                     'poke-edit-header-face)
+                         " = "
+                         edit-type
+                         "\n"))
+  (widget-insert (concat "  "
+                         (pcase edit-typekind
+                           ("struct" "{")
+                           ("array" "[")
+                           (_ ""))
+                         "\n"))
+  (mapcar
+   (lambda (elem)
+     (let ((elem-name (car elem))
+           (elem-value (cadr elem)))
+       (widget-create 'editable-field
+                      :size 30
+                      :format (concat "    "
+                                      (propertize elem-name
+                                                  'font-lock-face
+                                                  'poke-struct-field-name-face) "=" "%v,")
+                      :action `(lambda (widget event)
+                                 (poke-code-send
+                                  (concat "(" ,edit-name ")"
+                                          (if (equal ,edit-typekind "struct")
+                                              "."
+                                            "")
+                                          ,elem-name
+                                          " = "
+                                          (widget-value widget)
+                                          ";"
+                                          "plet_elval (\"(poke-edit-after)\");")))
+                      elem-value)
+       (widget-insert "\n")))
+   edit-elements)
+  (widget-insert (concat "  " (pcase edit-typekind
+                                ("struct" "}")
+                                ("array" "]")
+                                (_ ""))
+                         "\n"))
+  (use-local-map widget-keymap)
+  (widget-setup)
+  (goto-char (point-min)))
+
+(defun poke-edit-after ()
+  "This function is called after an edition value has been changed."
+  (poke-vu-refresh)
+  (let ((buf (get-buffer "*poke-edit*")))
+    (save-excursion
+      (set-buffer buf)
+      (poke-edit-do-buffer))))
 
 ;;;; poke-maps
 
