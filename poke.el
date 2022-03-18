@@ -961,7 +961,7 @@ fun plet_elval = (string s) void:
      elems)
     (mapcar
      (lambda (ename)
-       (setq elem-values (concat elem-values "format (\"%v\", "
+       (setq elem-values (concat elem-values "format (\"%Tv\", "
                                  "(" name ")"
                                  (if (equal (aref ename 0) ?\[) "" ".")
                                  ename "),")))
@@ -1413,7 +1413,7 @@ fun quit = void:
        (when buf (kill-buffer buf))))
    '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
      "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"
-     "*poke-settings*" "*poke-maps*"))
+     "*poke-settings*" "*poke-maps*" "*poke-edit*"))
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
