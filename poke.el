@@ -1068,10 +1068,19 @@ Each entry in the stack is a list of strings, and may be empty.")
           (list nil name type offset)
           (car poke-maps-stack))
          (cdr poke-maps-stack)))
-  (poke-maps-populate)
-  (poke-maps-do-line)
+  (let ((buf (get-buffer-create "*poke-maps*")))
+    (with-current-buffer buf
+      (poke-maps-do-buffer)))
   (when (not (get-buffer-window "*poke-maps*"))
     (switch-to-buffer-other-window "*poke-maps*")))
+
+(defun poke-maps-do-buffer ()
+  (let ((inhibit-read-only t))
+    (erase-buffer))
+  (remove-overlays)
+  (poke-maps-mode)
+  (poke-maps-populate)
+  (poke-maps-do-line))
 
 (defun poke-maps-populate ()
   "Populate a `poke-maps-mode' buffer with the map listing
@@ -1189,9 +1198,7 @@ at the top of the `poke-maps-stack' stack."
   (interactive)
   (let ((buf (get-buffer-create "*poke-maps*")))
     (with-current-buffer buf
-      (poke-maps-mode)
-      (poke-maps-populate)
-      (poke-maps-update-overlay)))
+      (poke-maps-do-buffer)))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-maps*")))
 
