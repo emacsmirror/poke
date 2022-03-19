@@ -428,7 +428,7 @@ Commands:
       (poke-code-mode)
       (goto-char (point-min))
       (insert "/* This is a Poke evaluation code.\n"
-              "   Press C-cC-c to evaluate the current section. */\n")))
+              "   Press C-cC-c to evaluate. */\n")))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-code*")))
 
@@ -1199,6 +1199,8 @@ at the top of the `poke-maps-stack' stack."
 
 (defvar poke-setting-pretty-print "no")
 (defvar poke-setting-omode "plain")
+(defvar poke-setting-omaps "no")
+(defvar poke-setting-obase 10)
 
 (defun poke-setting-set-pretty-print (val)
   (unless (member val '("yes" "no"))
@@ -1214,6 +1216,21 @@ at the top of the `poke-maps-stack' stack."
                           (if (equal val "plain")
                               "VM_OMODE_PLAIN"
                             "VM_OMODE_TREE")
+                          ");")))
+
+(defun poke-setting-set-obase (val)
+  (unless (member val '(2 8 10 16))
+    (error "Invalid setting for obase.
+Expected 2, 8, 10 or 16."))
+  (poke-code-send (concat "vm_set_obase ("
+                          (number-to-string val)
+                          ");")))
+
+(defun poke-setting-set-omaps (val)
+  (unless (member val '("yes" "no"))
+    (error "Invalid setting for omaps.  Expected \"yes\" or \"no\"."))
+  (poke-code-send (concat "vm_set_omaps ("
+                          (if (equal val "yes") "1" "0")
                           ");")))
 
 (defun poke-init-settings ()
@@ -1233,12 +1250,28 @@ at the top of the `poke-maps-stack' stack."
                            (setq poke-setting-omode (widget-value widget)))
                  '(item "plain") '(item "tree"))
   (widget-insert "\n")
+  (widget-insert "Output base:\n")
+  (widget-create 'radio-button-choice
+                 :value poke-setting-obase
+                 :notify (lambda (widget &rest ignore)
+                           (poke-setting-set-obase (widget-value widget))
+                           (setq poke-setting-obase (widget-value widget)))
+                 '(item 2) '(item 8) '(item 10) '(item 16))
+  (widget-insert "\n")
   (widget-insert "Pretty-print:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-pretty-print
                  :notify (lambda (widget &rest ignore)
                            (poke-setting-set-pretty-print (widget-value widget))
                            (setq poke-setting-pretty-print (widget-value widget)))
+                 '(item "yes") '(item "no"))
+  (widget-insert "\n")
+  (widget-insert "Output offsets:\n")
+  (widget-create 'radio-button-choice
+                 :value poke-setting-omaps
+                 :notify (lambda (widget &rest ignore)
+                           (poke-setting-set-omaps (widget-value widget))
+                           (setq poke-setting-omaps (widget-value widget)))
                  '(item "yes") '(item "no"))
   (widget-insert "\n")
   (use-local-map widget-keymap)
@@ -1420,6 +1453,23 @@ fun quit = void:
      "*poke-settings*" "*poke-maps*" "*poke-edit*"))
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
+
+;;;; window layouts
+
+(defun poke-frame-layout-1 ()
+  (setq display-buffer-alist
+        (append
+         `(("\\*poke-vu\\*" display-buffer-in-side-window
+            (side . top) (slot . 0)
+            (preserve-size . (nil . t)))
+           ("\\*\\(?:poke-edit\\|poke-code\\|poke-maps\\|poke-ios\\|poke-settings\\)\\*"
+            display-buffer-in-side-window
+            (side . right) (slot . 0) (window-width . fit-window-to-buffer)
+            (preserve-size . (t . nil)))
+           ("\\*poke-out\\*"
+            display-buffer-in-side-window
+            (side . bottom) (slot . -1) (preserve-size . (nil . t))))
+         display-buffer-alist)))
 
 (provide 'poke)
 ;;; poke.el ends here
