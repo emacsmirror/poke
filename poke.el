@@ -427,8 +427,8 @@ Commands:
       (set-buffer "*poke-code*")
       (poke-code-mode)
       (goto-char (point-min))
-      (insert "/* This is a Poke evaluation code.  Press C-cC-c to evaluate the current section.  */\n"
-              "/* //-- markers at the beginning of lines separate sections.  */\n")))
+      (insert "/* This is a Poke evaluation code.\n"
+              "   Press C-cC-c to evaluate the current section. */\n")))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-code*")))
 
@@ -1069,7 +1069,9 @@ Each entry in the stack is a list of strings, and may be empty.")
           (car poke-maps-stack))
          (cdr poke-maps-stack)))
   (poke-maps-populate)
-  (poke-maps-do-line))
+  (poke-maps-do-line)
+  (when (not (get-buffer-window "*poke-maps*"))
+    (switch-to-buffer-other-window "*poke-maps*")))
 
 (defun poke-maps-populate ()
   "Populate a `poke-maps-mode' buffer with the map listing
@@ -1399,9 +1401,11 @@ fun quit = void:
   (poke-repl)
   (poke-vu)
   (delete-other-windows)
-  (switch-to-buffer "*poke-vu*")
-  (switch-to-buffer-other-window "*poke-out*")
-  (switch-to-buffer-other-window "*poke-repl*"))
+  (switch-to-buffer "*poke-repl*")
+  (let ((current-window (get-buffer-window)))
+    (switch-to-buffer-other-window "*poke-out*")
+    (switch-to-buffer-other-window "*poke-vu*")
+    (select-window current-window)))
 
 (defun poke-exit ()
   (interactive)
