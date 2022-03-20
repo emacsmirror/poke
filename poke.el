@@ -953,8 +953,8 @@ fun plet_elval = (string s) void:
                           "typeof (" name "));")))
 
 (defun poke-edit-1 (name type typekind elems)
-  (let* ((elem-names "")
-         (elem-values ""))
+  (let ((elem-names "")
+        (elem-values ""))
     (mapcar
      (lambda (ename)
        (setq elem-names (concat elem-names "\"" ename "\",")))
@@ -1049,10 +1049,14 @@ fun plet_elval = (string s) void:
 Each entry in the stack is a list of strings, and may be empty.")
 
 (defun poke-maps-add-var (name)
-  (poke-code-send (concat "poke_el_map_1 ("
-                          "\"" name "\", "
-                          name ", "
-                          "typeof (" name "));")))
+  (let ((n (if (and (string-match " " name)
+                    (not (string-match "\\." name)))
+               (concat "(" name ")")
+             name)))
+    (poke-code-send (concat "poke_el_map_1 ("
+                            "\"" n "\", "
+                            n ", "
+                            "typeof (" n "));"))))
 
 (defun poke-maps-add-elems (name)
   (poke-code-send (concat "poke_el_map_elems ("
@@ -1378,6 +1382,18 @@ fun poke_el_edit_1 = (string name, any val, Pk_Type valtype) void:
 fun poke_el_edit_2 = (string name, any val, Pk_Type valtype,
                       string[] elem_names, string[] elem_vals) void:
 {
+  fun escape_string = (string s) string:
+  {
+    var escaped = \"\";
+    /* XXX escape also backslashes.  */
+    for (c in s)
+      if (c == '\"')
+        escaped += '\\\\' as string + '\"' as string;
+      else
+        escaped += c as string;
+    return escaped;
+  }
+
   var typekind = poke_el_pk_type_typekind (valtype);
 
   var elem_names_list = \"'(\";
@@ -1387,7 +1403,7 @@ fun poke_el_edit_2 = (string name, any val, Pk_Type valtype,
 
   var elem_vals_list = \"'(\";
   for (var i = 0UL; i < elem_vals'length; ++i)
-    elem_vals_list += \"\\\"\" + elem_vals[i] + \"\\\" \";
+    elem_vals_list += \"\\\"\" + escape_string (elem_vals[i]) + \"\\\" \";
   elem_vals_list += \")\";
 
   var cmd = format (\"(poke-edit-2 \\\"%s\\\" \\\"%s\\\" \\\"%s\\\" %s %s)\"
