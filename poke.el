@@ -427,7 +427,7 @@ Commands:
       (set-buffer "*poke-code*")
       (poke-code-mode)
       (goto-char (point-min))
-      (insert "/* This is a Poke evaluation code.\n"
+      (insert "/* This is a Poke evaluation buffer.\n"
               "   Press C-cC-c to evaluate. */\n")))
   (when (called-interactively-p)
     (switch-to-buffer-other-window "*poke-code*")))
