@@ -710,12 +710,6 @@ buffer."
                        (number-to-string (* (- (window-height window) 2)
                                             #x10)))))))
 
-(defun poke-vu-refresh ()
-  (interactive)
-  (let ((code (poke-vu-refresh-code)))
-    (when code
-      (poke-code-send code))))
-
 (add-hook 'window-size-change-functions
           (lambda (window)
             (let (buffer (window-buffer window))
