@@ -752,7 +752,6 @@ fun plet_elval = (string s) void:
 (defconst poke-repl-default-prompt "#!poke!# ")
 (defvar poke-repl-prompt poke-repl-default-prompt)
 (defvar poke-repl-process nil)
-(defvar poke-repl-seq 0)
 
 (defvar poke-repl-mode-map
   (let ((map (make-sparse-keymap)))
@@ -783,14 +782,13 @@ fun plet_elval = (string s) void:
     (let ((buffer-read-only nil))
       (save-excursion
         (re-search-backward
-         (regexp-quote (concat "#" (number-to-string poke-repl-seq)))
+         (regexp-quote (concat "---poke-repl-val---"))
          nil t)
         (delete-region (point) (line-end-position))
         (if (> (length valstring) 0)
             (insert valstring)
           (unless (equal (point) (point-max))
-            (delete-char 1))))
-      (setq poke-repl-seq (1+ poke-repl-seq)))))
+            (delete-char 1)))))))
 
 (defun poke-repl-set-prompt (string)
   (let ((previous-prompt poke-repl-prompt))
@@ -804,10 +802,8 @@ fun plet_elval = (string s) void:
 
 (defun poke-repl-input-sender (proc input)
   (if (not (string-blank-p input))
-    (let ((id (number-to-string poke-repl-seq))
-          (buffer-read-only nil)
-          (lb (- (line-beginning-position) 5)))
-      (comint-output-filter poke-repl-process (format "#%s\n" id))
+    (let ((buffer-read-only nil))
+      (comint-output-filter poke-repl-process "---poke-repl-val---\n")
       (comint-output-filter poke-repl-process poke-repl-prompt)
       (cond
        ((string-match "^[ \t]*\\(var\\|type\\|unit\\|fun\\) " input)
@@ -831,7 +827,6 @@ fun plet_elval = (string s) void:
   (poke-cmd)
   (poke-code)
   (when (not (process-live-p poke-repl-process))
-    (setq poke-repl-seq 0)
     (let ((buf (get-buffer-create "*poke-repl*")))
       (with-current-buffer  buf
         (poke-repl-mode)))
