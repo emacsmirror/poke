@@ -94,6 +94,8 @@
   "Face for warning messages.")
 (defface poke-vu-selected-byte-face '((t :background "yellow"))
   "Face for selected byte in poke-vu buffers.")
+(defface poke-vu-highlighted-byte-face '((t :background "green"))
+  "Face for highlighted byte in poke-vu buffers.")
 (defface poke-edit-header-face '((t :bold t))
   "Face for editor headers.")
 
@@ -581,6 +583,10 @@ return nil."
                            (/ lineoffset 2))))
           (forward-char column)
           (point))))))
+
+(defun poke-vu-remove-highlight ()
+  (remove-overlays (point-min) (point-max)
+                   'face 'poke-vu-highlighted-byte-face))
 
 (defun poke-vu-goto-byte (offset)
   "Move the pointer to the beginning of the byte at OFFSET
