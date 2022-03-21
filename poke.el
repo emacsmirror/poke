@@ -146,9 +146,9 @@ buffer `*poked*'."
 (defun poke-pokelet-filter (proc string)
   "Process filter for pokelets.
 
-This filter implements the poke daemon messge protocol.  PROC
-must be a pokelet process and is required to have the following
-attributes in its alist:
+This filter implements the poke daemon message protocol, called
+pdap.  PROC must be a pokelet process and is required to have the
+following attributes in its alist:
 
   pokelet-state
 
