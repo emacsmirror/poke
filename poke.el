@@ -727,7 +727,7 @@ fun plet_elval = (string s) void:
   var c = byte[s'length] ();
 
   stoca (s, c);
-  chan_send (100,  [PLET_ELVAL_CMD_EVAL] + c);
+  poked_chan_send (100,  [PLET_ELVAL_CMD_EVAL] + c);
 }
 ")
 
@@ -1335,12 +1335,12 @@ var poke_el_vu_size = 0#B;
 fun poke_el_vu_refresh = void:
 {
   try
-    vu :from poke_el_vu_from
-       :size poke_el_vu_size;
+    plet_vu :from poke_el_vu_from
+            :size poke_el_vu_size;
   catch if E_no_ios {};
 }
 
-poked_after_eval_hook += [(poke_el_vu_refresh)];
+poked_after_cmd_hook += [(poke_el_vu_refresh)];
 
 fun poke_el_ios_open = (int<32> ios) void:
 {
