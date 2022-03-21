@@ -1,4 +1,4 @@
-;; poke.el --- Emacs meets GNU poke!
+;;; poke.el --- Emacs meets GNU poke!
 
 ;; Copyright (C) 2022  Jose E. Marchesi
 ;; Author: Jose E. Marchesi <jemarch@gnu.org>

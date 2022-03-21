@@ -1,0 +1,51 @@
+\input texinfo
+@comment %**start of header
+@documentencoding UTF-8
+@setfilename poke-el.info
+@settitle Emacs interface to GNU poke
+@set UPDATED 21 March 2022
+@set VERSION 2.1
+@afourpaper
+@comment %**end of header
+
+@macro ie
+@i{i.e.@:}
+@end macro
+
+@copying
+Copyright @copyright{} 2022 Jose E. Marchesi.
+
+@quotation
+You can redistribute it and/or modify this manual under the terms of
+the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any
+later version.
+@end quotation
+@end copying
+
+@dircategory Emacs
+@direntry
+* Poke-El: (poke-el). Emacs interface to GNU poke
+@end direntry
+
+@titlepage
+@title poke-el: an Emacs interface to GNU poke
+@subtitle for version @value{VERSION}, @value{UPDATED}
+@author by Jose E. Marchesi
+@page
+@vskip 0pt plus 1filll
+@insertcopying
+@end titlepage
+
+@contents
+
+@ifnottex
+@node Top
+@top poke-el: an Emacs interface to GNU poke
+
+This manual documents version @value{VERSION} of poke.el.
+
+@insertcopying
+@end ifnottex
+
+@bye
