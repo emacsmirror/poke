@@ -696,22 +696,19 @@ Commands:
       (let ((buffer-read-only nil))
         (delete-region (point-min) (point-max))))))
 
-(defun poke-vu-refresh-code ()
+(defun poke-vu-refresh ()
   "Return the Poke code to send in order to refresh the poke-vu
 buffer."
   (let* ((buffer (get-buffer "*poke-vu*"))
          (window (get-buffer-window buffer)))
     (when (and (process-live-p poke-vu-process)
                window)
-      ;; Note we are assuming each VU line contains 0x10 bytes.
-      (concat "{vu "
-              ":from " (number-to-string
+      (poke-code-send (format
+                       "poke_el_vu_from = %s#B; poke_el_vu_size = %s#B; poke_el_vu_refresh;"
+                       (number-to-string
                         (buffer-local-value 'start-byte-offset buffer))
-              "#B "
-              ":size " (number-to-string (* (- (window-height window) 2)
-                                            #x10))
-              "#B"
-              ";} ?! E_no_ios;"))))
+                       (number-to-string (* (- (window-height window) 2)
+                                            #x10)))))))
 
 (defun poke-vu-refresh ()
   (interactive)
@@ -1337,6 +1334,19 @@ License GPLv3+: GNU GPL version 3 or later.\n\n\");
   print (\"This is free software: you are free to change and redistribute it.
 There is NO WARRANTY, to the extent permitted by law.\n\");
 }
+
+var poke_el_vu_from = 0#B;
+var poke_el_vu_size = 0#B;
+
+fun poke_el_vu_refresh = void:
+{
+  try
+    vu :from poke_el_vu_from
+       :size poke_el_vu_size;
+  catch if E_no_ios {};
+}
+
+poked_after_eval_hook += [(poke_el_vu_refresh)];
 
 fun poke_el_ios_open = (int<32> ios) void:
 {
