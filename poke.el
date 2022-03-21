@@ -785,7 +785,7 @@ fun plet_elval = (string s) void:
     (let ((buffer-read-only nil))
       (save-excursion
         (re-search-backward
-         (regexp-quote (concat "---poke-repl-val---"))
+         (regexp-quote (concat "-prv-"))
          nil t)
         (delete-region (point) (line-end-position))
         (if (> (length valstring) 0)
@@ -806,7 +806,7 @@ fun plet_elval = (string s) void:
 (defun poke-repl-input-sender (proc input)
   (if (not (string-blank-p input))
     (let ((buffer-read-only nil))
-      (comint-output-filter poke-repl-process "---poke-repl-val---\n")
+      (comint-output-filter poke-repl-process "-prv-\n")
       (comint-output-filter poke-repl-process poke-repl-prompt)
       (cond
        ((string-match "^[ \t]*\\(var\\|type\\|unit\\|fun\\) " input)
