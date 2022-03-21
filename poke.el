@@ -795,11 +795,12 @@ fun plet_elval = (string s) void:
       (comint-output-filter poke-repl-process poke-repl-prompt))))
 
 (defun poke-repl-input-sender (proc input)
-  (unless (string-blank-p input)
+  (if (not (string-blank-p input))
     (let ((id (number-to-string poke-repl-seq))
           (buffer-read-only nil)
           (lb (- (line-beginning-position) 5)))
       (comint-output-filter poke-repl-process (format "#%s\n" id))
+      (comint-output-filter poke-repl-process poke-repl-prompt)
       (cond
        ((string-match "^[ \t]*\\(var\\|type\\|unit\\|fun\\) " input)
         (poke-code-send (concat input ";")))
@@ -812,9 +813,9 @@ fun plet_elval = (string s) void:
                                 "\"" (match-string 1 input) "\""
                                 ");")))
        (t
-        (poke-cmd-send (concat input ";"))))))
-  (poke-vu-refresh)
-  (comint-output-filter poke-repl-process poke-repl-prompt))
+        (poke-cmd-send (concat input ";")))))
+    (comint-output-filter poke-repl-process poke-repl-prompt))
+  (poke-vu-refresh))
 
 (defun poke-repl ()
   (interactive)
