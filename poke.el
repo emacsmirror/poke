@@ -818,8 +818,7 @@ fun plet_elval = (string s) void:
                                 ");")))
        (t
         (poke-cmd-send (concat input ";")))))
-    (comint-output-filter poke-repl-process poke-repl-prompt))
-  (poke-vu-refresh))
+    (comint-output-filter poke-repl-process poke-repl-prompt)))
 
 (defun poke-repl ()
   (interactive)
