@@ -99,10 +99,6 @@
 
 ;;;; Poke styling classes
 
-;; GNU poke uses named styling classes in order to style the output we
-;; get through the pokelets.  The following variable associates Poke
-;; styling class names with Emacs faces.
-
 (defvar poke-styling-faces
   '(("integer" poke-integer-face)
     ("string" poke-string-face)
@@ -112,16 +108,28 @@
     ("diff-minus" poke-diff-minus-face)
     ("diff-plus" poke-diff-plus-face)
     ("error" poke-error-face)
-    ("warning" poke-warning-face)))
+    ("warning" poke-warning-face))
+  "GNU poke uses named styling classes in order to style the
+  output we get through the pokelets.  This variable associates
+  Poke styling class names with Emacs faces.")
 
 ;;;; poked
 
-(defvar poke-poked-program "poked")
-(defvar poke-poked-process nil)
-(defvar poked-socket "/tmp/poked.ipc")
+(defvar poke-poked-program "poked"
+  "poke.el uses the poke daemon (poked) in order to communicate
+  with GNU poke.  This variable contains the name of the program
+  to execute the daemon.")
+
+(defvar poke-poked-process nil
+  "Process running the poke daemon.")
+
+(defvar poked-socket "/tmp/poked.ipc"
+  "Unix domain socket where the poke daemon listens for
+  connections.")
 
 (defun poke-poked ()
-  "Start a poke daemon process"
+  "Start the poke daemon.  The new process is associated with the
+buffer `*poked*'."
   (interactive)
   (when (not (process-live-p poke-poked-process))
     (setq poke-poked-process
@@ -132,30 +140,35 @@
 
 ;;;; pokelet protocol
 
-;; The filter function below implements the poke daemon message
-;; protocol.  The pokelet processes are required to have the following
-;; attributes in their alist:
-;;
-;;  pokelet-state
-;;    One of the POKE_STATE_* values below.  Initially must
-;;    be POKE_STATE_LENGTH.
-;;
-;;  pokelet-buf
-;;    This is a string that accumulates the input received
-;;    by the pokelet.  Initially "".
-;;
-;;  pokelet-msg-length
-;;    Lenght of the message being processed.  Initially 0.
-;;
-;;  pokelet-msg-handler
-;;    Function that gets the process, a command number
-;;    and a command argument.  This function can error
-;;    if there is a protocol error.
-
 (defconst PLET_STATE_LENGTH 0) ; Collecting length bytes.
 (defconst PLET_STATE_MSG 1) ; Collecting message data.
 
 (defun poke-pokelet-filter (proc string)
+  "Process filter for pokelets.
+
+This filter implements the poke daemon messge protocol.  PROC
+must be a pokelet process and is required to have the following
+attributes in its alist:
+
+  pokelet-state
+
+    One of the POKE_STATE_* values below.  Initially must
+    be POKE_STATE_LENGTH.
+
+  pokelet-buf
+
+    This is a string that accumulates the input received
+    by the pokelet.  Initially "".
+
+  pokelet-msg-length
+
+    Lenght of the message being processed.  Initially 0.
+
+  pokelet-msg-handler
+
+    Function that gets the process, a command number
+    and a command argument.  This function can error
+    if there is a protocol error."
   (process-put proc 'pokelet-buf
                (concat (process-get proc 'pokelet-buf) string))
   (while (or (and (= (process-get proc 'pokelet-state) PLET_STATE_LENGTH)
