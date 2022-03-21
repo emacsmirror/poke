@@ -683,19 +683,27 @@ Commands:
       (let ((buffer-read-only nil))
         (delete-region (point-min) (point-max))))))
 
-(defun poke-vu-refresh ()
+(defun poke-vu-refresh-code ()
+  "Return the Poke code to send in order to refresh the poke-vu
+buffer."
   (let* ((buffer (get-buffer "*poke-vu*"))
          (window (get-buffer-window buffer)))
     (when (and (process-live-p poke-vu-process)
                window)
       ;; Note we are assuming each VU line contains 0x10 bytes.
-      (poke-code-send (concat "{vu "
-                              ":from " (number-to-string
-                                        (buffer-local-value 'start-byte-offset buffer))
-                              "#B "
-                              ":size " (number-to-string (* (- (window-height window) 2)
-                                                            #x10)) "#B"
-                              ";} ?! E_no_ios;")))))
+      (concat "{vu "
+              ":from " (number-to-string
+                        (buffer-local-value 'start-byte-offset buffer))
+              "#B "
+              ":size " (number-to-string (* (- (window-height window) 2)
+                                            #x10))
+              "#B"
+              ";} ?! E_no_ios;"))))
+
+(defun poke-vu-refresh ()
+  (let ((code (poke-vu-refresh-code)))
+    (when code
+      (poke-code-send code))))
 
 (add-hook 'window-size-change-functions
           (lambda (window)
