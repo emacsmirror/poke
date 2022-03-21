@@ -932,8 +932,10 @@ fun plet_elval = (string s) void:
         (setq tabulated-list-format headers)
         (setq tabulated-list-padding 2)
         (tabulated-list-init-header)
-        (setq tabulated-list-entries entries)
-        (tabulated-list-print nil)))))
+        (setq tabulated-list-entries (reverse entries))
+        (tabulated-list-print nil)
+        (goto-char (point-min))
+        (poke-ios-update-overlay)))))
 
 (defun poke-ios ()
   (interactive)
