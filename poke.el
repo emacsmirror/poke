@@ -701,6 +701,7 @@ buffer."
               ";} ?! E_no_ios;"))))
 
 (defun poke-vu-refresh ()
+  (interactive)
   (let ((code (poke-vu-refresh-code)))
     (when code
       (poke-code-send code))))
@@ -759,6 +760,8 @@ fun plet_elval = (string s) void:
     (define-key map (kbd "\C-cc") 'poke-code)
     (define-key map (kbd "\C-cs") 'poke-settings)
     (define-key map (kbd "\C-cm") 'poke-maps)
+    (define-key map (kbd "\C-cv") 'poke-vu)
+    (define-key map (kbd "\C-cV") 'poke-vu-refresh)
     map)
   "Local keymap for `poke-repl-mode' buffers.")
 
