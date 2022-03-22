@@ -40,6 +40,8 @@
 ;;      connected to the poked input channel 3.
 ;; poke-vu
 ;;      connected to the poked output channel 2.
+;; poke-complete
+;;      connected to the poked output channel 5.
 ;; poke-elval
 ;;      connected to the poked output channel 100.
 
@@ -330,7 +332,7 @@ following attributes in its alist:
                       'poke-out-styles (cdr styles)))))
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
-     (process-put proc 'pokelet-msg-lenght 0)
+     (process-put proc 'pokelet-msg-length 0)
      (error "pokelet protocol error"))))
 
 (defvar poke-out-font-lock nil
@@ -475,7 +477,7 @@ Commands:
      )
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
-     (process-put proc 'pokelet-msg-lenght 0)
+     (process-put proc 'pokelet-msg-length 0)
      (error "pokelet protocol error"))))
 
 (defvar poke-vu-font-lock
@@ -722,6 +724,51 @@ buffer."
               (when (equal (buffer-name buffer) "*poke-vu*")
                 (poke-vu-refresh)))))
 
+;;;; poke-complete
+
+(defvar poke-complete-process nil)
+
+(defvar poke-complete-alternatives nil)
+
+(defun poke-complete-handle-cmd (proc cmd data)
+  (pcase cmd
+    (1 ; Complete identifier: variable, type, function.
+     (let ((alternatives nil))
+       (with-temp-buffer
+         (insert data)
+         ;; Delete the completion string itself.
+         (goto-char (point-min))
+         (search-forward "\0" nil t)
+         (delete-region (point-min) (point))
+         ;; Now collect the rest of the strings.
+         (let ((pos (point-min)))
+           (while (search-forward "\0" nil t)
+             (setq alternatives
+                   (cons
+                    (buffer-substring pos (- (point) 1))
+                    alternatives))
+             (setq pos (point)))))
+       (setq poke-complete-alternatives alternatives)
+       (when (process-live-p poke-repl-process)
+         (with-current-buffer "*poke-repl*"
+           (completion-in-region repl-complete-begin
+                                 repl-complete-end
+                                 poke-complete-alternatives)))))
+    (2 ; Complete IO space.  Unused
+     )
+    (_ ;; Protocol error
+     (process-put proc 'pokelet-buf "")
+     (process-put proc 'pokelet-msg-length 0)
+     (error "pokelete protocol error"))))
+
+(defun poke-complete ()
+  (interactive)
+  (when (not (process-live-p poke-complete-process))
+    (poke-code)
+    (setq poke-complete-process
+          (poke-make-pokelet-process-new "poke-complete" "\x85"
+                                         #'poke-complete-handle-cmd))))
+
 ;;;; poke-elval
 
 (defconst poke-elval-init-pk
@@ -788,7 +835,23 @@ fun plet_elval = (string s) void:
   (set-process-query-on-exit-flag poke-repl-process nil)
   (set-marker
    (process-mark poke-repl-process) (point))
+  (add-to-list 'comint-dynamic-complete-functions
+               #'poke-repl-complete-symbol)
   (comint-output-filter poke-repl-process poke-repl-prompt))
+
+(defvar repl-complete-begin nil)
+(defvar repl-complete-end nil)
+
+(defun poke-repl-complete-symbol ()
+  (let ((symbol (or (comint-word "a-zA-Z._'")
+                    "")))
+    (setq repl-complete-begin
+          (if symbol (match-beginning 0) (point)))
+    (setq repl-complete-end
+          (if symbol (match-end 0) (point)))
+    (poke-code-send (concat "plet_autocomplete (1, "
+                              "\"" symbol "\""
+                              ");"))))
 
 (defun poke-repl-end-of-iteration (valstring)
   (with-current-buffer "*poke-repl*"
@@ -841,6 +904,7 @@ fun plet_elval = (string s) void:
   (poke-out)
   (poke-cmd)
   (poke-code)
+  (poke-complete)
   (when (not (process-live-p poke-repl-process))
     (let ((buf (get-buffer-create "*poke-repl*")))
       (with-current-buffer  buf
@@ -1507,7 +1571,7 @@ fun quit = void:
        (when buf (kill-buffer buf))))
    '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
      "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"
-     "*poke-settings*" "*poke-maps*" "*poke-edit*"))
+     "*poke-settings*" "*poke-maps*" "*poke-edit*" "*poke-complete*"))
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
