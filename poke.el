@@ -794,14 +794,17 @@ fun plet_elval = (string s) void:
   (with-current-buffer "*poke-repl*"
     (let ((buffer-read-only nil))
       (save-excursion
-        (re-search-backward
-         (regexp-quote (concat "-prv-"))
-         nil t)
-        (delete-region (point) (line-end-position))
-        (if (> (length valstring) 0)
-            (insert valstring)
-          (unless (equal (point) (point-max))
-            (delete-char 1)))))))
+        (if
+            (re-search-backward
+             (regexp-quote (concat "-prv-"))
+             nil t)
+            (progn
+              (delete-region (point) (line-end-position))
+              (if (> (length valstring) 0)
+                  (insert valstring)
+                (unless (equal (point) (point-max))
+                  (delete-char 1))))
+          (message valstring))))))
 
 (defun poke-repl-set-prompt (string)
   (let ((previous-prompt poke-repl-prompt))
