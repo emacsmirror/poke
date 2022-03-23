@@ -1064,7 +1064,7 @@ fun plet_elval = (string s) void:
 (defun poke-edit-2 (name type typekind elem-names elem-values)
   (let ((buf (get-buffer-create "*poke-edit*")))
     (with-current-buffer buf
-      (kill-all-local-variables)
+      (poke-edit-mode)
       (setq-local edit-name name)
       (setq-local edit-type type)
       (setq-local edit-typekind typekind)
@@ -1073,6 +1073,18 @@ fun plet_elval = (string s) void:
       (poke-edit-do-buffer)
       (when (not (get-buffer-window "*poke-edit*"))
         (switch-to-buffer-other-window "*poke-edit*")))))
+
+(defvar poke-edit-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map widget-keymap)
+    (define-key map (kbd "q") 'quit-window)
+    map))
+
+(defun poke-edit-mode ()
+  "Major mode for editing Poke values."
+  (interactive)
+  (kill-all-local-variables)
+  (use-local-map poke-edit-mode-map))
 
 (defun poke-edit-do-buffer ()   
   (let ((inhibit-read-only t))
@@ -1118,7 +1130,6 @@ fun plet_elval = (string s) void:
                                 ("array" "]")
                                 (_ ""))
                          "\n"))
-  (use-local-map widget-keymap)
   (widget-setup)
   (goto-char (point-min)))
 
