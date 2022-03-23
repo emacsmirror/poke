@@ -732,16 +732,19 @@ buffer."
 
 (defun poke-complete-handle-cmd (proc cmd data)
   (pcase cmd
-    (1 ; Complete identifier: variable, type, function.
+    (1 ; Complete identifier: variable, type, function, unit.
      (let ((alternatives nil))
-       (with-temp-buffer
+       (with-current-buffer (process-buffer proc)
+         (delete-region (point-min) (point-max))
          (insert data)
-         ;; Delete the completion string itself.
+         ;; Note the trailing NULL was removed by the protocol
+         ;; handler.
+         (insert "\0")
+         ;; Skip the completion string itself.
          (goto-char (point-min))
          (search-forward "\0" nil t)
-         (delete-region (point-min) (point))
          ;; Now collect the rest of the strings.
-         (let ((pos (point-min)))
+         (let ((pos (point)))
            (while (search-forward "\0" nil t)
              (setq alternatives
                    (cons
@@ -750,7 +753,7 @@ buffer."
              (setq pos (point)))))
        (setq poke-complete-alternatives alternatives)
        (when (process-live-p poke-repl-process)
-         (with-current-buffer "*poke-repl*"
+         (with-current-buffer (process-buffer poke-repl-process)
            (completion-in-region repl-complete-begin
                                  repl-complete-end
                                  poke-complete-alternatives)))))
@@ -845,13 +848,12 @@ fun plet_elval = (string s) void:
 (defun poke-repl-complete-symbol ()
   (let ((symbol (or (comint-word "a-zA-Z._'")
                     "")))
-    (setq repl-complete-begin
-          (if symbol (match-beginning 0) (point)))
-    (setq repl-complete-end
-          (if symbol (match-end 0) (point)))
-    (poke-code-send (concat "plet_autocomplete (1, "
+    (when symbol
+      (setq repl-complete-begin (match-beginning 0))
+      (setq repl-complete-end (match-end 0))
+      (poke-code-send (concat "plet_autocomplete (1, "
                               "\"" symbol "\""
-                              ");"))))
+                              ");")))))
 
 (defun poke-repl-end-of-iteration (valstring)
   (with-current-buffer "*poke-repl*"
