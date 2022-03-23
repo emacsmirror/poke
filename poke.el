@@ -754,8 +754,8 @@ buffer."
        (setq poke-complete-alternatives alternatives)
        (when (process-live-p poke-repl-process)
          (with-current-buffer (process-buffer poke-repl-process)
-           (completion-in-region repl-complete-begin
-                                 repl-complete-end
+           (completion-in-region poke-repl-complete-begin
+                                 poke-repl-complete-end
                                  poke-complete-alternatives)))))
     (2 ; Complete IO space.  Unused
      )
@@ -842,15 +842,15 @@ fun plet_elval = (string s) void:
                #'poke-repl-complete-symbol)
   (comint-output-filter poke-repl-process poke-repl-prompt))
 
-(defvar repl-complete-begin nil)
-(defvar repl-complete-end nil)
+(defvar poke-repl-complete-begin nil)
+(defvar poke-repl-complete-end nil)
 
 (defun poke-repl-complete-symbol ()
   (let ((symbol (or (comint-word "a-zA-Z._'")
                     "")))
     (when symbol
-      (setq repl-complete-begin (match-beginning 0))
-      (setq repl-complete-end (match-end 0))
+      (setq poke-repl-complete-begin (match-beginning 0))
+      (setq poke-repl-complete-end (match-end 0))
       (poke-code-send (concat "plet_autocomplete (1, "
                               "\"" symbol "\""
                               ");")))))
