@@ -1264,6 +1264,15 @@ at the top of the `poke-maps-stack' stack."
                   (get-buffer-window-list)))
         (select-window cur-window)))))
 
+(defun poke-maps-cmd-copy-name-as-kill ()
+  (interactive)
+  (let ((name (tabulated-list-get-id)))
+    (when name
+      (if (eq last-command 'kill-region)
+          (kill-append name nil)
+        (kill-new name))
+      (message "%s" name))))
+
 (defvar poke-maps-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") 'poke-maps-cmd-sub)
@@ -1273,6 +1282,7 @@ at the top of the `poke-maps-stack' stack."
     (define-key map (kbd "n") 'poke-maps-cmd-next)
     (define-key map (kbd "p") 'poke-maps-cmd-prev)
     (define-key map (kbd "e") 'poke-maps-cmd-edit)
+    (define-key map (kbd "w") 'poke-maps-cmd-copy-name-as-kill)
     map)
   "Local keymap for `poke-maps-mode' buffer.")
 
