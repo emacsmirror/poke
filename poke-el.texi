@@ -25,7 +25,7 @@ later version.
 
 @dircategory Emacs
 @direntry
-* Poke-El: (poke-el). Emacs interface to GNU poke
+* Emacs meets GNU poke: (poke-el). Emacs interface to GNU poke
 @end direntry
 
 @titlepage
@@ -47,5 +47,181 @@ This manual documents version @value{VERSION} of poke.el.
 
 @insertcopying
 @end ifnottex
+
+@menu
+* Introduction::                Getting started
+
+@detailmenu
+ --- The Detailed Node Listing ---
+
+Introduction
+
+* Installation::                How to install this package
+* Configuration::               Loading and configuring
+* Running::                     Running and exiting poke
+* Feedback::                    Bug reports, ideas, patches etc.
+@end detailmenu
+@end menu
+
+@node Introduction
+@chapter Introduction
+
+poke-el is an Emacs interface to GNU
+poke@footnote{@url{https://jemarch.net/poke}}, the extensible editor
+for structured binary data.
+
+@menu
+* Installation::                How to install this package
+* Configuration::               Loading and configuring
+* Running::                     Running and exiting poke
+* Feedback::                    Bug reports, ideas, patches etc.
+@end menu
+
+@node Installation
+@section Installation
+
+This program is implemented in a self-contained elisp file called
+@file{poke.el}.  It can be obtained in several ways:
+
+@itemize @minus
+@item From @url{https://elpa.gnu.org/packages/poke.html, GNU ELPA}
+using the built-in Emacs package manager.
+@item As part of the source tree cloned from the development git
+repository of GNU poke.  @file{poke.el} can be found in the
+@file{emacs/} directory of the GNU poke source tree.
+@item As a single file downloaded form some other location in
+internet.
+@item It may be already installed as part of a binary package in some
+distribution.
+@end itemize
+
+@noindent In the second case you need to tell Emacs where to locate the
+@file{poke.el} file and to load it.  Add the following to your
+@file{.emacs} file.
+
+@lisp
+(add-to-list 'load-path "~/path/to/poke-el/")
+(require 'poke)
+@end lisp
+
+@noindent If @file{poke.el} was installed as part of a binary
+package in a distribution then you usually don't have to touch the
+@code{load-path} variable.  Depending on the specific case you may
+have to @code{require} the package.
+
+@node Configuration
+@section Configuration
+@cindex configuration
+
+Once loaded, there are many aspects of poke-el that can be configured
+by the user.
+
+@menu
+* Settings::                    Output numeration base and other settings.
+* Window Layouts::              Predefined layouts.
+@end menu
+
+@node Settings
+@subsection Settings
+
+The following variables can be customized in order to change the
+default behavior of poke.
+
+@table @code
+@item poke-setting-pretty-print
+Indicates whether Poke values are pretty-printed.  Valid values are
+the strings @code{"yes"} and @code{"no}.  Defaults to @code{"no"}.
+@item poke-setting-omode
+The numeration base to use when printing numerical values.  Valid
+values are 2, 8, 10 and 16.  Defaults to 10.
+@item poke-setting-omode
+How to print composite Poke values, such as arrays and structs.  Valid
+values are @code{"plain"} and @code{"tree"}.
+@end table
+
+Note that all the settings above can be interactively changed at any
+time using the settings editor.  XXX xref.
+
+@node Window Layouts
+@subsection Window Layouts
+
+The poke Emacs interface is composed by many different buffers, each
+playing a different role: the repl, the bytes viewer, the settings
+editor, the maps tree, @i{etc}.  When using the interface, actions
+will often result in many of these buffers to be displayed using
+@code{switch-to-buffer-other-window}.
+
+In Emacs it is possible to configure how buffers are associated to
+windows by customizing the @code{display-buffer-alist} variable.  This
+is often used in order to make the interface more predictable, i.e. to
+always have certain of the buffers shown in the same area of the
+screen.
+
+poke-el provides an example of such a configuration, that you can use
+as-is or as the basis of your own layouts, in the function
+@code{poke-frame-layout-1}.  This function appends entries to
+@code{display-buffer-alist}.  It implements the following window
+layout:
+
+@smallexample
+@group
+     ___________________________________
+    |                                   |
+    |            *poke-vu*              |
+    |                                   |
+    |___________________________________|
+    |                  |                |
+    |                  |                |
+    |                  | *poke-maps*/   |
+    |                  | *poke-edit*/   |
+    |    *poke-repl*   | *poke-code*/   |
+    |                  | *poke-ios*/    |
+    |                  | *poke-settings*|
+    |                  |                |
+    |__________________|________________|
+    |                                   |
+    |            *poke-out*             |
+    |___________________________________|
+@end group
+@end smallexample
+
+To use this layout, simply include this call in your
+@file{.emacs}:
+
+@lisp
+(poke-frame-layout-1)
+@end lisp
+
+@node Running
+@section Running
+
+Once you have loaded and configured poke-el, it is time to run poke!
+To do so, simply issue @kbd{M-xpoke}.
+
+This command will start the poke daemon if it wasn't already running
+and initialize the interface if necessary. Then it will show the poke
+windows in the current frame (using whatever configured layout.
+@xref{Window Layouts}) and drop you on the poke REPL.
+
+In order to exit poke, you can either use the command
+@kbd{M-xpoke-exit} or the @command{quit} command at the repl:
+
+@example
+#!poke!# quit
+@end example
+
+@node Feedback
+@section Feedback
+@cindex feedback
+@cindex bug reports
+
+If you find problems with poke-el, or if you have questions, remarks,
+or ideas about it, please mail to the GNU poke mailing list
+@email{poke-devel@@gnu.org}.  If you are not a member of the mailing
+list, your mail will be passed to the list after a moderator has
+approved it@footnote{Please consider subscribing to the mailing list,
+in order to minimize the work the mailing list moderators have to do.
+The subscription can be done online at
+@url{http://lists.gnu.org/mailman/listinfo/poke-devel}.}.
 
 @bye
