@@ -9,7 +9,7 @@
 @comment %**end of header
 
 @macro ie
-@i{i.e.@:}
+@i{i.e.}
 @end macro
 
 @copying
@@ -59,7 +59,7 @@ Introduction
 * Installation::                How to install this package
 * Configuration::               Loading and configuring
 * Running::                     Running and exiting poke
-* Feedback::                    Bug reports, ideas, patches etc.
+* Feedback::                    Bug reports, ideas, patches @i{etc}.
 @end detailmenu
 @end menu
 
@@ -74,7 +74,7 @@ for structured binary data.
 * Installation::                How to install this package
 * Configuration::               Loading and configuring
 * Running::                     Running and exiting poke
-* Feedback::                    Bug reports, ideas, patches etc.
+* Feedback::                    Bug reports, ideas, patches @i{etc}.
 @end menu
 
 @node Installation
@@ -153,7 +153,7 @@ will often result in many of these buffers to be displayed using
 
 In Emacs it is possible to configure how buffers are associated to
 windows by customizing the @code{display-buffer-alist} variable.  This
-is often used in order to make the interface more predictable, i.e. to
+is often used in order to make the interface more predictable, @ie{} to
 always have certain of the buffers shown in the same area of the
 screen.
 
