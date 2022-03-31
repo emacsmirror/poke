@@ -1361,6 +1361,12 @@ Expected 2, 8, 10 or 16."))
   (poke-setting-set-pretty-print poke-setting-pretty-print)
   (poke-setting-set-omode poke-setting-omode))
 
+(defvar poke-settings-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map widget-keymap)
+    (define-key map (kbd "q") 'quit-window)
+    map))
+
 (defun poke-settings-create-widgets ()
   (kill-all-local-variables)
   (let ((inhibit-read-only t))
@@ -1398,7 +1404,7 @@ Expected 2, 8, 10 or 16."))
                            (setq poke-setting-omaps (widget-value widget)))
                  '(item "yes") '(item "no"))
   (widget-insert "\n")
-  (use-local-map widget-keymap)
+  (use-local-map poke-settings-map)
   (widget-setup))
 
 (defun poke-settings ()
