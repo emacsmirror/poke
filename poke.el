@@ -459,6 +459,7 @@ Commands:
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
          (let ((buffer-read-only nil))
+           (setq-local poke-vu-cur-pos (point))
            (delete-region (point-min) (point-max))))))
     (2 ;; APPEND
      (process-put proc 'poke-vu-output
@@ -466,10 +467,17 @@ Commands:
     (5 ;; FINISH
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
-         (let ((buffer-read-only nil))
-           (delete-region (point-min) (point-max))
+         (let* ((buffer-read-only nil)
+                (current-pos (buffer-local-value 'poke-vu-cur-pos
+                                                 (current-buffer))))
            (insert (process-get proc 'poke-vu-output))
-           (goto-char current-pos))))
+           (goto-char current-pos)
+           (mapcar (lambda (window)
+                     (set-window-point window current-pos))
+                   (get-buffer-window-list))
+           (let ((offset (poke-vu-byte-at-point)))
+             (when offset
+               (poke-vu-goto-byte offset))))))
      (process-put proc 'poke-vu-output ""))
     (3 ;; HIGHLIGHT
      )
@@ -598,12 +606,10 @@ relative to the beginning of the shown IO space."
       ;; Scroll so the desired byte is in the first line.
       (setq start-byte-offset (- offset
                                  (% offset poke-vu-bytes-per-line)))
-      (setq current-pos byte-pos)
       (poke-vu-refresh)
       (setq byte-pos (poke-vu-byte-pos offset)))
     ;; Move the point where the byte at the given offset is.
     (goto-char byte-pos)
-    (setq current-pos byte-pos)
     ;; Update selected-byte overlays
     (remove-overlays (point-min) (point-max)
                      'face 'poke-vu-selected-byte-face)
@@ -679,7 +685,6 @@ Commands:
   (setq-local start-byte-offset 0)
   (setq-local header-line-format
               "76543210  0011 2233 4455 6677 8899 aabb ccdd eeff  0123456789ABCDEF")
-  (setq-local current-pos 0)
   (setq mode-name "poke-vu")
   (setq major-mode 'poke-vu-mode)
   (read-only-mode t))
@@ -1086,7 +1091,7 @@ fun plet_elval = (string s) void:
   (kill-all-local-variables)
   (use-local-map poke-edit-mode-map))
 
-(defun poke-edit-do-buffer ()   
+(defun poke-edit-do-buffer ()
   (let ((inhibit-read-only t))
     (erase-buffer))
   (remove-overlays)
