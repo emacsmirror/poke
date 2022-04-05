@@ -1,6 +1,7 @@
-;;; poke.el --- Emacs meets GNU poke!
+;;; poke.el --- Emacs meets GNU poke!  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2022  Jose E. Marchesi
+;; Copyright (C) 2022  Free Software Foundation, Inc.
+
 ;; Author: Jose E. Marchesi <jemarch@gnu.org>
 ;; Maintainer: Jose E. Marchesi <jemarch@gnu.org>
 ;; URL: https://www.jemarch.net/poke
@@ -26,7 +27,7 @@
 
 ;;; Commentary:
 
-;; This file implements a Emacs interface to GNU poke, the extensible
+;; This file implements an Emacs interface to GNU poke, the extensible
 ;; editor for structured binary data.
 ;;
 ;; It uses the poked (GNU poke daemon) in order to act as a set of
@@ -52,7 +53,7 @@
 (require 'tabulated-list)
 (require 'poke-mode)
 (require 'widget)
-(require 'cl)
+(require 'cl-lib)
 
 ;;;; First, some utilities
 
@@ -65,6 +66,10 @@
           (ash (aref seq 2) 16)
           (ash (aref seq 1) 8)
           (aref seq 0)))
+
+(defgroup poke ()
+  "Poke interaction mode."
+  :group 'programming)
 
 ;;;; Faces
 
@@ -144,9 +149,6 @@ buffer `*poked*'."
 
 ;;;; pokelet protocol
 
-(defconst PLET_STATE_LENGTH 0) ; Collecting length bytes.
-(defconst PLET_STATE_MSG 1) ; Collecting message data.
-
 (defun poke-pokelet-filter (proc string)
   "Process filter for pokelets.
 
@@ -154,33 +156,32 @@ This filter implements the poke daemon message protocol, called
 pdap.  PROC must be a pokelet process and is required to have the
 following attributes in its alist:
 
-  pokelet-state
+  `pokelet-state'
 
-    One of the POKE_STATE_* values below.  Initially must
-    be POKE_STATE_LENGTH.
+    One of the PLET_STATE_* values below.  Initially must
+    be PLET_STATE_LENGTH.
 
-  pokelet-buf
+  `pokelet-buf'
 
     This is a string that accumulates the input received
-    by the pokelet.  Initially "".
+    by the pokelet.  Initially \"\".
 
-  pokelet-msg-length
+  `pokelet-msg-length'
 
-    Lenght of the message being processed.  Initially 0.
+    Length of the message being processed.  Initially 0.
 
-  pokelet-msg-handler
+  `pokelet-msg-handler'
 
     Function that gets the process, a command number
     and a command argument.  This function can error
     if there is a protocol error."
-  (process-put proc 'pokelet-buf
-               (concat (process-get proc 'pokelet-buf) string))
-  (while (or (and (= (process-get proc 'pokelet-state) PLET_STATE_LENGTH)
+  (cl-callf concat (process-get proc 'pokelet-buf) string)
+  (while (or (and (eq (process-get proc 'pokelet-state) 'PLET_STATE_LENGTH)
                   (>= (length (process-get proc 'pokelet-buf)) 2))
-             (and (= (process-get proc 'pokelet-state) PLET_STATE_MSG)
+             (and (eq (process-get proc 'pokelet-state) 'PLET_STATE_MSG)
                   (>= (length (process-get proc 'pokelet-buf))
                       (process-get proc 'pokelet-msg-length))))
-    (if (= (process-get proc 'pokelet-state) PLET_STATE_LENGTH)
+    (if (eq (process-get proc 'pokelet-state) 'PLET_STATE_LENGTH)
         (let ((pokelet-buf (process-get proc 'pokelet-buf)))
           ;; The message lenght is encoded as an unsigned
           ;; little-endian 16 bit number.  Collect and skipt it.
@@ -190,7 +191,7 @@ following attributes in its alist:
                                (aref pokelet-buf 0)))
           (process-put proc 'pokelet-buf (substring pokelet-buf 2))
           ;; We are now waiting for the message data.
-          (process-put proc 'pokelet-state PLET_STATE_MSG))
+          (process-put proc 'pokelet-state 'PLET_STATE_MSG))
       ;; We are collecting message data.
       (when (>= (length (process-get proc 'pokelet-buf))
                 (process-get proc 'pokelet-msg-length))
@@ -208,14 +209,14 @@ following attributes in its alist:
                      'pokelet-buf
                      (substring (process-get proc 'pokelet-buf)
                                 (process-get proc 'pokelet-msg-length)))
-        (process-put proc 'pokelet-state PLET_STATE_LENGTH)))))
+        (process-put proc 'pokelet-state 'PLET_STATE_LENGTH)))))
 
 (defun poke-make-pokelet-process-new (name ctrl msg-handler)
    (let ((proc (make-network-process :name name
                                      :buffer (concat "*" name "*")
                                      :family 'local
                                      :service poked-socket)))
-     (process-put proc 'pokelet-state PLET_STATE_LENGTH)
+     (process-put proc 'pokelet-state 'PLET_STATE_LENGTH)
      (process-put proc 'pokelet-buf "")
      (process-put proc 'pokelet-msg-length 0)
      (process-put proc 'pokelet-msg-handler msg-handler)
@@ -235,6 +236,8 @@ following attributes in its alist:
 
 ;;;; poke-out pokelet
 
+(defvar poke-repl-process)
+
 (defconst poke-out-iter-string
   (propertize (char-to-string 8594) 'font-lock-face 'poke-iter-string-face))
 
@@ -242,14 +245,13 @@ following attributes in its alist:
 
 (defun poke-out-stylize (styles string)
   (let ((propertized-string string))
-    (mapcar (lambda (style)
-              (let* ((face-ass (assoc style poke-styling-faces))
-                     (face (when face-ass (cadr face-ass))))
-                (setq propertized-string
-                      (if face
-                          (propertize propertized-string 'font-lock-face face)
-                        propertized-string))))
-            (reverse styles))
+    (dolist (style (reverse styles))
+      (let* ((face-ass (assoc style poke-styling-faces))
+             (face (when face-ass (cadr face-ass))))
+        (setq propertized-string
+              (if face
+                  (propertize propertized-string 'font-lock-face face)
+                propertized-string))))
     propertized-string))
 
 (defun poke-out-handle-cmd (proc cmd data)
@@ -258,9 +260,8 @@ following attributes in its alist:
      (process-put proc 'poke-out-eval "")
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
-         (let ((buffer-read-only nil))
-           (goto-char (point-max))
-           (process-put proc 'poke-out-iter-begin (point))))))
+         (goto-char (point-max))
+         (process-put proc 'poke-out-iter-begin (point)))))
     (3 ;; Iteration end
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
@@ -269,10 +270,8 @@ following attributes in its alist:
                           (point-max))
              (narrow-to-region (process-get proc 'poke-out-iter-begin)
                                (point-max)))
-           (let ((buffer-read-only nil))
-             (mapcar (lambda (window)
-                       (set-window-point window (point-min)))
-                     (get-buffer-window-list))))))
+           (dolist (window (get-buffer-window-list))
+             (set-window-point window (point-min))))))
      (process-put proc 'poke-out-emitted-iter-string nil)
      (when (process-live-p poke-repl-process)
        (poke-repl-end-of-iteration (process-get proc 'poke-out-eval))))
@@ -282,7 +281,7 @@ following attributes in its alist:
        (when (buffer-live-p (process-buffer proc))
          (with-current-buffer (process-buffer proc)
            (save-excursion
-             (let ((buffer-read-only nil))
+             (let ((inhibit-read-only t))
                (goto-char (point-max))
                (unless (process-get proc 'poke-out-emitted-iter-string)
                  (insert (concat poke-out-iter-string "\n"))
@@ -300,7 +299,7 @@ following attributes in its alist:
        (when (not (process-live-p poke-repl-process))
          (when (buffer-live-p (process-buffer proc))
            (with-current-buffer (process-buffer proc)
-             (let ((buffer-read-only nil))
+             (let ((inhibit-read-only t))
                (goto-char (point-max))
                (insert (concat ">" output))))))))
     (7 ;; Error output
@@ -314,7 +313,7 @@ following attributes in its alist:
        (when (not (process-live-p poke-repl-process))
          (when (buffer-live-p (process-buffer proc))
            (with-current-buffer (process-buffer proc)
-             (let ((buffer-read-only nil))
+             (let ((inhibit-read-only t))
                (goto-char (point-max))
                (insert (concat "error>" output))))))))
     (4 ;; Styling class begin
@@ -336,24 +335,15 @@ following attributes in its alist:
      (error "pokelet protocol error"))))
 
 (defvar poke-out-font-lock nil
-  "Font lock entries for `poke-vu-mode'.")
+  "Font lock entries for `poke-out-mode'.")
 
-(defun poke-out-mode ()
-  "A major mode for Poke out buffers.
-
-Commands:
-\\{poke-out-mode-map}"
-  (interactive)
-  (kill-all-local-variables)
-  (setq poke-out-mode-map (make-keymap))
-  (use-local-map  poke-out-mode-map)
+(define-derived-mode poke-out-mode nil "poke-out"
+  "A major mode for Poke out buffers."
   (setq-local font-lock-defaults '(poke-out-font-lock))
-  (setq mode-name "poke-out")
-  (setq major-mode 'poke-out-mode)
   (read-only-mode t))
 
-(defun poke-out ()
-  (interactive)
+(defun poke-out (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (when (not (process-live-p poke-out-process))
     (setq poke-out-process
           (poke-make-pokelet-process-new "poke-out" "\x81"
@@ -362,10 +352,9 @@ Commands:
     (process-put poke-out-process 'poke-out-iter-begin 1)
     (process-put poke-out-process 'poke-out-eval nil)
     (process-put poke-out-process 'poke-out-emitted-iter-string nil)
-    (save-excursion
-      (set-buffer "*poke-out*")
+    (with-current-buffer "*poke-out*"
       (poke-out-mode)))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-out*")))
 
 ;;;; poke-cmd pokelet
@@ -384,13 +373,13 @@ Commands:
           (process-send-string poke-cmd-process string)))
     (error "poke-cmd is not running")))
 
-(defun poke-cmd ()
-  (interactive)
+(defun poke-cmd (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (when (not (process-live-p poke-cmd-process))
     (setq poke-cmd-process (poke-make-pokelet-process
                             "poke-cmd" "\x02"))
     (set-process-query-on-exit-flag poke-cmd-process nil))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-cmd*")))
 
 ;;;; poke-code pokelet
@@ -423,30 +412,25 @@ Commands:
 
 (defvar poke-code-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map "\C-c\C-c" 'poke-code-cmd-send-code)
+    (define-key map "\C-c\C-c" #'poke-code-cmd-send-code)
     map))
 
 (define-derived-mode poke-code-mode poke-mode "poke-code"
-  "A major mode for Poke code.
-
-Commands:
-\\<poke-code-mode-map>
-\\{poke-code-mode-map}"
+  "A major mode for Poke code."
 )
 
-(defun poke-code ()
-  (interactive)
+(defun poke-code (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (when (not (process-live-p poke-code-process))
     (setq poke-code-process (poke-make-pokelet-process
                             "poke-code" "\x01"))
     (set-process-query-on-exit-flag poke-code-process nil)
-    (save-excursion
-      (set-buffer "*poke-code*")
+    (with-current-buffer "*poke-code*"
       (poke-code-mode)
       (goto-char (point-min))
       (insert "/* This is a Poke evaluation buffer.\n"
               "   Press C-cC-c to evaluate. */\n")))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-code*")))
 
 ;;;; poke-vu pokelet
@@ -458,7 +442,7 @@ Commands:
     (1 ;; CLEAR
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
-         (let ((buffer-read-only nil))
+         (let ((inhibit-read-only t))
            (setq-local poke-vu-cur-pos (point))
            (delete-region (point-min) (point-max))))))
     (2 ;; APPEND
@@ -467,14 +451,13 @@ Commands:
     (5 ;; FINISH
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
-         (let* ((buffer-read-only nil)
+         (let* ((inhibit-read-only t)
                 (current-pos (buffer-local-value 'poke-vu-cur-pos
                                                  (current-buffer))))
            (insert (process-get proc 'poke-vu-output))
            (goto-char current-pos)
-           (mapcar (lambda (window)
-                     (set-window-point window current-pos))
-                   (get-buffer-window-list))
+           (dolist (window (get-buffer-window-list))
+             (set-window-point window current-pos))
            (let ((offset (poke-vu-byte-at-point)))
              (when offset
                (poke-vu-goto-byte offset))))))
@@ -494,33 +477,32 @@ Commands:
     )
   "Font lock entries for `poke-vu-mode'.")
 
+(defvar-local poke--start-byte-offset 0)
+
 (defun poke-vu-cmd-beginning-of-buffer ()
   (interactive)
-  (setq start-byte-offset 0)
+  (setq poke--start-byte-offset 0)
   (poke-vu-refresh)
   (poke-vu-goto-byte 0))
 
 (defun poke-vu-cmd-previous-line ()
   (interactive)
-  (if (equal (line-number-at-pos) 1)
+  (if (= (point-min) (line-beginning-position))
       (progn
-        (setq-local start-byte-offset (- start-byte-offset #x10))
+        (setq-local poke--start-byte-offset (- poke--start-byte-offset #x10))
         (poke-vu-refresh))
     (previous-line))
   (let ((offset (poke-vu-byte-at-point)))
     (if offset
-          (poke-vu-goto-byte offset))))
+        (poke-vu-goto-byte offset))))
 
 (defun poke-vu-cmd-next-line ()
   (interactive)
-  (if (save-excursion
-        (end-of-line)
-        (forward-char)
-        (eobp))
+  (if (>= (line-beginning-position 2) (point-max))
       (progn
-        (setq-local start-byte-offset (+ start-byte-offset #x10))
+        (setq-local poke--start-byte-offset (+ poke--start-byte-offset #x10))
         (poke-vu-refresh)
-        (end-of-buffer)
+        (goto-char (point-max))
         (previous-line))
     (next-line))
   (let ((offset (poke-vu-byte-at-point)))
@@ -529,22 +511,22 @@ Commands:
 
 (defun poke-vu-cmd-page-down ()
   (interactive)
-  (save-excursion
-    (let ((window (get-buffer-window (current-buffer))))
-      (setq-local start-byte-offset
-                  (+ start-byte-offset (* (- (window-height) 1) #x10)))
-      (poke-vu-refresh)))
+  (save-excursion ;; FIXME: What for, we're not moving here.
+    (setq-local poke--start-byte-offset
+                ;; FIXME: The window-height doesn't necessarily say
+                ;; how many lines are actually displayed :-(
+                (+ poke--start-byte-offset (* (- (window-height) 1) #x10)))
+    (poke-vu-refresh))
   (let ((offset (poke-vu-byte-at-point)))
     (if offset
         (poke-vu-goto-byte offset))))
 
 (defun poke-vu-cmd-page-up ()
   (interactive)
-  (save-excursion
-    (let ((window (get-buffer-window (current-buffer))))
-      (setq-local start-byte-offset
-                  (- start-byte-offset (* (- (window-height) 1) #x10)))
-      (poke-vu-refresh)))
+  (save-excursion ;; FIXME: What for, we're not moving here.
+    (setq-local poke--start-byte-offset
+                (- poke--start-byte-offset (* (- (window-height) 1) #x10)))
+    (poke-vu-refresh))
   (let ((offset (poke-vu-byte-at-point)))
     (if offset
         (poke-vu-goto-byte offset))))
@@ -553,7 +535,7 @@ Commands:
 
 (defun poke-vu-bol-byte ()
   "Return the byte offset of the first byte in the current line."
-  (+ start-byte-offset
+  (+ poke--start-byte-offset
      (* (- (line-number-at-pos) 1) poke-vu-bytes-per-line)))
 
 (defun poke-vu-byte-at-point ()
@@ -578,15 +560,15 @@ corresponding to the given offset.
 
 If the current buffer is not showing the given byte offset,
 return nil."
-  (when (and (>= offset start-byte-offset)
-             (<= offset (+ start-byte-offset
+  (when (and (>= offset poke--start-byte-offset)
+             (<= offset (+ poke--start-byte-offset
                            (* (count-lines (point-min) (point-max))
                               poke-vu-bytes-per-line))))
     (save-excursion
-      (let ((lineno (+ (/ (- offset start-byte-offset)
-                          poke-vu-bytes-per-line)
-                       1)))
-        (goto-line lineno)
+      (let ((lineno (/ (- offset poke--start-byte-offset)
+                          poke-vu-bytes-per-line)))
+        (goto-char (point-min))
+        (forward-line lineno)
         (let* ((lineoffset (- offset (poke-vu-bol-byte)))
                (column  (+ 10
                            (* 2 lineoffset)
@@ -604,8 +586,8 @@ relative to the beginning of the shown IO space."
   (let ((byte-pos (poke-vu-byte-pos offset)))
     (unless byte-pos
       ;; Scroll so the desired byte is in the first line.
-      (setq start-byte-offset (- offset
-                                 (% offset poke-vu-bytes-per-line)))
+      (setq poke--start-byte-offset (- offset
+                                       (% offset poke-vu-bytes-per-line)))
       (poke-vu-refresh)
       (setq byte-pos (poke-vu-byte-pos offset)))
     ;; Move the point where the byte at the given offset is.
@@ -661,79 +643,69 @@ relative to the beginning of the shown IO space."
           (kill-new string))
         (message "%s" string)))))
 
-(defun poke-vu-mode ()
-  "A major mode for Poke vu output.
+(defvar poke-vu-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "\C-v"  #'poke-vu-cmd-page-down)
+    (define-key map "\M-v"  #'poke-vu-cmd-page-up)
+    (define-key map "\C-a"  #'poke-vu-cmd-move-beginning-of-line)
+    (define-key map "\C-e"  #'poke-vu-cmd-move-end-of-line)
+    (define-key map "\C-b"  #'poke-vu-cmd-backward-char)
+    (define-key map "\C-f"  #'poke-vu-cmd-forward-char)
+    (define-key map "\M-<"  #'poke-vu-cmd-beginning-of-buffer)
+    (define-key map "\C-p"  #'poke-vu-cmd-previous-line)
+    (define-key map "\C-n"  #'poke-vu-cmd-next-line)
+    (define-key map "\C-cg" #'poke-vu-cmd-goto-byte)
+    (define-key map "w"     #'poke-vu-cmd-copy-byte-offset-as-kill)
+    map))
 
-Commands:
-\\{poke-vu-mode-map}"
-  (interactive)
-  (kill-all-local-variables)
-  (setq poke-vu-mode-map (make-keymap))
-  (use-local-map  poke-vu-mode-map)
-  (define-key poke-vu-mode-map "\C-v" 'poke-vu-cmd-page-down)
-  (define-key poke-vu-mode-map "\M-v" 'poke-vu-cmd-page-up)
-  (define-key poke-vu-mode-map "\C-a" 'poke-vu-cmd-move-beginning-of-line)
-  (define-key poke-vu-mode-map "\C-e" 'poke-vu-cmd-move-end-of-line)
-  (define-key poke-vu-mode-map "\C-b" 'poke-vu-cmd-backward-char)
-  (define-key poke-vu-mode-map "\C-f" 'poke-vu-cmd-forward-char)
-  (define-key poke-vu-mode-map "\M-<" 'poke-vu-cmd-beginning-of-buffer)
-  (define-key poke-vu-mode-map "\C-p" 'poke-vu-cmd-previous-line)
-  (define-key poke-vu-mode-map "\C-n" 'poke-vu-cmd-next-line)
-  (define-key poke-vu-mode-map "\C-cg" 'poke-vu-cmd-goto-byte)
-  (define-key poke-vu-mode-map "w" 'poke-vu-cmd-copy-byte-offset-as-kill)
+(define-derived-mode poke-vu-mode nil "poke-vu"
+  "A major mode for Poke vu output."
   (setq-local font-lock-defaults '(poke-vu-font-lock))
-  (setq-local start-byte-offset 0)
+  (setq-local poke--start-byte-offset 0)
   (setq-local header-line-format
               "76543210  0011 2233 4455 6677 8899 aabb ccdd eeff  0123456789ABCDEF")
-  (setq mode-name "poke-vu")
-  (setq major-mode 'poke-vu-mode)
-  (read-only-mode t))
+  (read-only-mode t)
+  (add-hook 'window-size-change-functions #'poke-vu-refresh nil t))
 
-(defun poke-vu ()
-  (interactive)
+(defun poke-vu (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (when (not (process-live-p poke-vu-process))
     (setq poke-vu-process
           (poke-make-pokelet-process-new "poke-vu" "\x82"
                                          #'poke-vu-handle-cmd))
     (process-put poke-vu-process 'poke-vu-output "")
-    (save-excursion
-     (set-buffer "*poke-vu*")
+    (with-current-buffer "*poke-vu*"
      (poke-vu-mode)))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-vu*")))
 
 (defun poke-vu-erase ()
   (let ((buffer (get-buffer "*poke-vu*")))
     (when (and (process-live-p poke-vu-process)
                buffer)
-      (let ((buffer-read-only nil))
+      (let ((inhibit-read-only t))
         (delete-region (point-min) (point-max))))))
 
-(defun poke-vu-refresh ()
+(defun poke-vu-refresh (&optional window)
   "Return the Poke code to send in order to refresh the poke-vu
 buffer."
   (let* ((buffer (get-buffer "*poke-vu*"))
-         (window (get-buffer-window buffer)))
+         (window (or window (get-buffer-window buffer))))
+    (cl-assert (or (null window) (eq buffer (window-buffer window))))
     (when (and (process-live-p poke-vu-process)
                window)
       (poke-code-send (format
-                       "poke_el_vu_from = %s#B; poke_el_vu_size = %s#B; poke_el_vu_refresh;"
-                       (number-to-string
-                        (buffer-local-value 'start-byte-offset buffer))
-                       (number-to-string (* (- (window-height window) 2)
-                                            #x10)))))))
-
-(add-hook 'window-size-change-functions
-          (lambda (window)
-            (let (buffer (window-buffer window))
-              (when (equal (buffer-name buffer) "*poke-vu*")
-                (poke-vu-refresh)))))
+                       "poke_el_vu_from = %d#B; poke_el_vu_size = %d#B; poke_el_vu_refresh;"
+                       (buffer-local-value 'poke--start-byte-offset buffer)
+                       (* (- (window-height window) 2) #x10))))))
 
 ;;;; poke-complete
 
 (defvar poke-complete-process nil)
 
 (defvar poke-complete-alternatives nil)
+(defvar poke-repl-complete-begin nil)
+(defvar poke-repl-complete-end nil)
 
 (defun poke-complete-handle-cmd (proc cmd data)
   (pcase cmd
@@ -798,7 +770,7 @@ fun plet_elval = (string s) void:
   (pcase cmd
     (0 ;; EVAL
      (ignore-errors
-       (eval (car (read-from-string data)))))
+       (eval (car (read-from-string data)) t)))
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
      (process-put proc 'pokelet-msg-lenght 0)
@@ -821,19 +793,17 @@ fun plet_elval = (string s) void:
 
 (defvar poke-repl-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "\C-ci") 'poke-ios)
-    (define-key map (kbd "\C-cc") 'poke-code)
-    (define-key map (kbd "\C-cs") 'poke-settings)
-    (define-key map (kbd "\C-cm") 'poke-maps)
-    (define-key map (kbd "\C-cv") 'poke-vu)
-    (define-key map (kbd "\C-cV") 'poke-vu-refresh)
+    (define-key map (kbd "\C-ci") #'poke-ios)
+    (define-key map (kbd "\C-cc") #'poke-code)
+    (define-key map (kbd "\C-cs") #'poke-settings)
+    (define-key map (kbd "\C-cm") #'poke-maps)
+    (define-key map (kbd "\C-cv") #'poke-vu)
+    (define-key map (kbd "\C-cV") #'poke-vu-refresh)
     map)
   "Local keymap for `poke-repl-mode' buffers.")
 
 (define-derived-mode poke-repl-mode comint-mode "poke"
-  "Major mode for the poke repl.
-\\<poke-repl-mode-map>
-\\{poke-repl-mode-map}"
+  "Major mode for the poke repl."
   (setq comint-prompt-regexp (concat "^" (regexp-quote poke-repl-prompt)))
   (setq comint-input-sender 'poke-repl-input-sender)
   (setq poke-repl-process
@@ -847,9 +817,6 @@ fun plet_elval = (string s) void:
                #'poke-repl-complete-symbol)
   (comint-output-filter poke-repl-process poke-repl-prompt))
 
-(defvar poke-repl-complete-begin nil)
-(defvar poke-repl-complete-end nil)
-
 (defun poke-repl-complete-symbol ()
   (let ((symbol (or (comint-word "a-zA-Z._'")
                     "")))
@@ -862,7 +829,7 @@ fun plet_elval = (string s) void:
 
 (defun poke-repl-end-of-iteration (valstring)
   (with-current-buffer "*poke-repl*"
-    (let ((buffer-read-only nil))
+    (let ((inhibit-read-only t))
       (save-excursion
         (if
             (re-search-backward
@@ -886,9 +853,10 @@ fun plet_elval = (string s) void:
           (delete-region (point) (line-end-position))))
       (comint-output-filter poke-repl-process poke-repl-prompt))))
 
-(defun poke-repl-input-sender (proc input)
-  (if (not (string-blank-p input))
-    (let ((buffer-read-only nil))
+(defun poke-repl-input-sender (_proc input)
+  (if (string-blank-p input)
+      (comint-output-filter poke-repl-process poke-repl-prompt)
+    (let ((inhibit-read-only t))
       (comint-output-filter poke-repl-process "-prv-\n")
       (comint-output-filter poke-repl-process poke-repl-prompt)
       (cond
@@ -903,11 +871,10 @@ fun plet_elval = (string s) void:
                                 "\"" (match-string 1 input) "\""
                                 ");")))
        (t
-        (poke-cmd-send (concat input ";")))))
-    (comint-output-filter poke-repl-process poke-repl-prompt)))
+        (poke-cmd-send (concat input ";")))))))
 
-(defun poke-repl ()
-  (interactive)
+(defun poke-repl (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (poke-out)
   (poke-cmd)
   (poke-code)
@@ -917,7 +884,7 @@ fun plet_elval = (string s) void:
       (with-current-buffer  buf
         (poke-repl-mode)))
     (poke-code-send "poke_el_banner;"))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-repl*")))
 
 ;;;; poke-ios
@@ -964,17 +931,15 @@ fun plet_elval = (string s) void:
 
 (defvar poke-ios-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [return] 'poke-ios-cmd-set-ios)
-    (define-key map (kbd "RET") 'poke-ios-cmd-set-ios)
-    (define-key map (kbd "n") 'poke-ios-cmd-next)
-    (define-key map (kbd "p") 'poke-ios-cmd-prev)
+    (define-key map [return]    #'poke-ios-cmd-set-ios)
+    (define-key map (kbd "RET") #'poke-ios-cmd-set-ios)
+    (define-key map (kbd "n")   #'poke-ios-cmd-next)
+    (define-key map (kbd "p")   #'poke-ios-cmd-prev)
     map)
   "Local keymap for `poke-ios-mode' buffers.")
 
 (define-derived-mode poke-ios-mode tabulated-list-mode "poke-ios"
-  "Major mode for summarizing the open IO spaces in poke.
-\\<poke-ios-mode-map>
-\\{poke-ios-mode-map}"
+  "Major mode for summarizing the open IO spaces in poke."
   (setq tabulated-list-format nil)
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key nil)
@@ -1003,8 +968,7 @@ fun plet_elval = (string s) void:
 (defun poke-ios-populate ()
   "Populate a `poke-ios-mode' buffer with the data in `poke-ios-alist."
   (when (get-buffer "*poke-ios*")
-    (save-excursion
-      (set-buffer "*poke-ios*")
+    (with-current-buffer "*poke-ios*"
       (let ((headers [("Id" 5 t) ("Handler" 10 nil) ("Flags" 8 nil)
                       ("Size" 6 t)])
             (entries (mapcar
@@ -1026,14 +990,14 @@ fun plet_elval = (string s) void:
         (goto-char (point-min))
         (poke-ios-update-overlay)))))
 
-(defun poke-ios ()
-  (interactive)
+(defun poke-ios (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (let ((buf (get-buffer-create "*poke-ios*")))
     (with-current-buffer buf
       (poke-ios-mode)
       (poke-ios-populate)
       (poke-ios-update-overlay)))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-ios*")))
 
 ;;;; poke-edit
@@ -1044,20 +1008,17 @@ fun plet_elval = (string s) void:
                           name ", "
                           "typeof (" name "));")))
 
-(defun poke-edit-1 (name type typekind elems)
-  (let ((elem-names "")
-        (elem-values ""))
-    (mapcar
-     (lambda (ename)
-       (setq elem-names (concat elem-names "\"" ename "\",")))
-     elems)
-    (mapcar
-     (lambda (ename)
-       (setq elem-values (concat elem-values "format (\"%Tv\", "
-                                 "(" name ")"
-                                 (if (equal (aref ename 0) ?\[) "" ".")
-                                 ename "),")))
-     elems)
+(defun poke-edit-1 (name _type _typekind elems)
+  (let ((elem-names
+         (mapconcat (lambda (ename) (concat "\"" ename "\""))
+                    elems ","))
+        (elem-values
+         (mapconcat (lambda (ename)
+                      (concat "format (\"%Tv\", "
+                              "(" name ")"
+                              (if (equal (aref ename 0) ?\[) "" ".")
+                              ename ")"))
+                    elems ",")))
     (poke-code-send
      (concat "poke_el_edit_2 ("
              "\"" name "\", "
@@ -1066,15 +1027,21 @@ fun plet_elval = (string s) void:
              "[" elem-names "], "
              "[" elem-values "]);"))))
 
+(defvar poke--edit-name)
+(defvar poke--edit-type)
+(defvar poke--edit-typekind)
+(defvar poke--edit-elem-names)
+(defvar poke--edit-elem-values)
+
 (defun poke-edit-2 (name type typekind elem-names elem-values)
   (let ((buf (get-buffer-create "*poke-edit*")))
     (with-current-buffer buf
       (poke-edit-mode)
-      (setq-local edit-name name)
-      (setq-local edit-type type)
-      (setq-local edit-typekind typekind)
-      (setq-local edit-elem-names elem-names)
-      (setq-local edit-elem-values elem-values)
+      (setq-local poke--edit-name name)
+      (setq-local poke--edit-type type)
+      (setq-local poke--edit-typekind typekind)
+      (setq-local poke--edit-elem-names elem-names)
+      (setq-local poke--edit-elem-values elem-values)
       (poke-edit-do-buffer)
       (when (not (get-buffer-window "*poke-edit*"))
         (switch-to-buffer-other-window "*poke-edit*")))))
@@ -1082,7 +1049,7 @@ fun plet_elval = (string s) void:
 (defvar poke-edit-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map widget-keymap)
-    (define-key map (kbd "q") 'quit-window)
+    (define-key map (kbd "q") #'quit-window)
     map))
 
 (defun poke-edit-mode ()
@@ -1095,44 +1062,48 @@ fun plet_elval = (string s) void:
   (let ((inhibit-read-only t))
     (erase-buffer))
   (remove-overlays)
-  (widget-insert (concat (propertize edit-name
+  (widget-insert (concat (propertize poke--edit-name
                                      'font-lock-face
                                      'poke-edit-header-face)
                          " = "
-                         edit-type
+                         poke--edit-type
                          "\n"))
   (widget-insert (concat "  "
-                         (pcase edit-typekind
-                           ("struct" "{")
-                           ("array" "[")
+                         (pcase poke--edit-typekind
+                           ('struct "{")
+                           ('array "[")
                            (_ ""))
                          "\n"))
-  (mapcar*
+  (cl-mapcar
    (lambda (elem-name elem-value)
      (widget-create 'editable-field
                     :size 2
                     :format (concat "    "
                                     (propertize elem-name
                                                 'font-lock-face
-                                                'poke-struct-field-name-face) "=" "%v,")
-                    :action `(lambda (widget event)
-                               (poke-code-send
-                                (concat "(" ,edit-name ")"
-                                        (if (equal ,edit-typekind "struct")
-                                            "."
-                                          "")
-                                        ,elem-name
-                                        " = "
-                                        (widget-value widget)
-                                        ";"
-                                        "plet_elval (\"(poke-edit-after)\");")))
+                                                'poke-struct-field-name-face)
+                                    "=" "%v,")
+                    :action
+                    (let ((edit-name poke--edit-name)
+                          (edit-typekind poke--edit-typekind))
+                      (lambda (widget _event)
+                        (poke-code-send
+                         (concat "(" edit-name ")"
+                                 (if (equal edit-typekind 'struct)
+                                     "."
+                                   "")
+                                 elem-name
+                                 " = "
+                                 (widget-value widget)
+                                 ";"
+                                 "plet_elval (\"(poke-edit-after)\");"))))
                     elem-value)
      (widget-insert "\n"))
-   edit-elem-names
-   edit-elem-values)
-  (widget-insert (concat "  " (pcase edit-typekind
-                                ("struct" "}")
-                                ("array" "]")
+   poke--edit-elem-names
+   poke--edit-elem-values)
+  (widget-insert (concat "  " (pcase poke--edit-typekind
+                                ('struct "}")
+                                ('array "]")
                                 (_ ""))
                          "\n"))
   (widget-setup)
@@ -1143,7 +1114,7 @@ fun plet_elval = (string s) void:
   (poke-vu-refresh)
   (let ((buf (get-buffer "*poke-edit*")))
     (set-buffer buf)
-    (poke-edit edit-name)))
+    (poke-edit poke--edit-name)))
 
 ;;;; poke-maps
 
@@ -1193,14 +1164,13 @@ Each entry in the stack is a list of strings, and may be empty.")
   "Populate a `poke-maps-mode' buffer with the map listing
 at the top of the `poke-maps-stack' stack."
   (when (get-buffer "*poke-maps*")
-    (save-excursion
-      (set-buffer "*poke-maps*")
+    (with-current-buffer "*poke-maps*"
       (let ((headers [("" 3 nil) ("Offset" 20 nil) ("Name" 30 nil)])
             (entries (mapcar
                       (lambda (map)
                         (let ((map-mark (if (car map) "#" ""))
                               (map-name (cadr map))
-                              (map-type (caddr map))
+                              ;; (map-type (caddr map))
                               (map-offset (cadddr map)))
                           (list map-name (vector map-mark
                                                  (if (equal (% map-offset 8) 0)
@@ -1260,8 +1230,7 @@ at the top of the `poke-maps-stack' stack."
   (let ((buf (get-buffer "*poke-out*"))
         (cur-window (get-buffer-window)))
     (when buf
-      (save-excursion
-        (set-buffer buf)
+      (with-current-buffer buf
         (ignore-errors
           (mapcar (lambda (window)
                     (select-window window)
@@ -1280,21 +1249,19 @@ at the top of the `poke-maps-stack' stack."
 
 (defvar poke-maps-mode-map
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "RET") 'poke-maps-cmd-sub)
-    (define-key map (kbd "SPC") 'poke-maps-cmd-scroll-out-up)
-    (define-key map (kbd "u") 'poke-maps-cmd-parent)
-    (define-key map (kbd "#") 'poke-maps-cmd-mark)
-    (define-key map (kbd "n") 'poke-maps-cmd-next)
-    (define-key map (kbd "p") 'poke-maps-cmd-prev)
-    (define-key map (kbd "e") 'poke-maps-cmd-edit)
-    (define-key map (kbd "w") 'poke-maps-cmd-copy-name-as-kill)
+    (define-key map (kbd "RET") #'poke-maps-cmd-sub)
+    (define-key map (kbd "SPC") #'poke-maps-cmd-scroll-out-up)
+    (define-key map (kbd "u")   #'poke-maps-cmd-parent)
+    (define-key map (kbd "#")   #'poke-maps-cmd-mark)
+    (define-key map (kbd "n")   #'poke-maps-cmd-next)
+    (define-key map (kbd "p")   #'poke-maps-cmd-prev)
+    (define-key map (kbd "e")   #'poke-maps-cmd-edit)
+    (define-key map (kbd "w")   #'poke-maps-cmd-copy-name-as-kill)
     map)
   "Local keymap for `poke-maps-mode' buffer.")
 
 (define-derived-mode poke-maps-mode tabulated-list-mode "poke-maps"
-    "Major mode for listing the maps in poke.
-\\<poke-maps-mode-map>
-\\{poke-maps-mode-map}"
+  "Major mode for listing the maps in poke."
   (setq tabulated-list-format nil)
   (setq tabulated-list-padding 2)
   (setq tabulated-list-sort-key nil)
@@ -1311,12 +1278,12 @@ at the top of the `poke-maps-stack' stack."
                 (line-end-position))
   (overlay-put poke-maps-overlay 'face 'highlight))
 
-(defun poke-maps ()
-  (interactive)
+(defun poke-maps (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (let ((buf (get-buffer-create "*poke-maps*")))
     (with-current-buffer buf
       (poke-maps-do-buffer)))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-maps*")))
 
 ;;;; poke-settings
@@ -1364,7 +1331,7 @@ Expected 2, 8, 10 or 16."))
 (defvar poke-settings-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map widget-keymap)
-    (define-key map (kbd "q") 'quit-window)
+    (define-key map (kbd "q") #'quit-window)
     map))
 
 (defun poke-settings-create-widgets ()
@@ -1375,7 +1342,7 @@ Expected 2, 8, 10 or 16."))
   (widget-insert "Output mode:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-omode
-                 :notify (lambda (widget &rest ignore)
+                 :notify (lambda (widget &rest _)
                            (poke-setting-set-omode (widget-value widget))
                            (setq poke-setting-omode (widget-value widget)))
                  '(item "plain") '(item "tree"))
@@ -1383,7 +1350,7 @@ Expected 2, 8, 10 or 16."))
   (widget-insert "Output base:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-obase
-                 :notify (lambda (widget &rest ignore)
+                 :notify (lambda (widget &rest _)
                            (poke-setting-set-obase (widget-value widget))
                            (setq poke-setting-obase (widget-value widget)))
                  '(item 2) '(item 8) '(item 10) '(item 16))
@@ -1391,7 +1358,7 @@ Expected 2, 8, 10 or 16."))
   (widget-insert "Pretty-print:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-pretty-print
-                 :notify (lambda (widget &rest ignore)
+                 :notify (lambda (widget &rest _)
                            (poke-setting-set-pretty-print (widget-value widget))
                            (setq poke-setting-pretty-print (widget-value widget)))
                  '(item "yes") '(item "no"))
@@ -1399,7 +1366,7 @@ Expected 2, 8, 10 or 16."))
   (widget-insert "Output offsets:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-omaps
-                 :notify (lambda (widget &rest ignore)
+                 :notify (lambda (widget &rest _)
                            (poke-setting-set-omaps (widget-value widget))
                            (setq poke-setting-omaps (widget-value widget)))
                  '(item "yes") '(item "no"))
@@ -1407,14 +1374,14 @@ Expected 2, 8, 10 or 16."))
   (use-local-map poke-settings-map)
   (widget-setup))
 
-(defun poke-settings ()
-  (interactive)
+(defun poke-settings (&optional and-display)
+  (interactive (list (not (or executing-kbd-macro noninteractive))))
   (let ((buf (get-buffer "*poke-settings*")))
     (unless buf
       (setq buf (get-buffer-create "*poke-settings*"))
       (with-current-buffer buf
         (poke-settings-create-widgets))))
-  (when (called-interactively-p)
+  (when and-display
     (switch-to-buffer-other-window "*poke-settings*")))
 
 ;;;; Main interface
@@ -1538,7 +1505,7 @@ fun poke_el_edit_2 = (string name, any val, Pk_Type valtype,
     elem_vals_list += \"\\\"\" + escape_string (elem_vals[i]) + \"\\\" \";
   elem_vals_list += \")\";
 
-  var cmd = format (\"(poke-edit-2 \\\"%s\\\" \\\"%s\\\" \\\"%s\\\" %s %s)\"
+  var cmd = format (\"(poke-edit-2 \\\"%s\\\" \\\"%s\\\" '%s %s %s)\"
                     name, valtype.name, typekind,
                     elem_names_list, elem_vals_list);
   plet_elval (cmd);
@@ -1599,13 +1566,12 @@ fun quit = void:
   (interactive)
   ;; Note that killing the buffers will also kill the
   ;; associated processes if they are running.
-  (mapcar
-   (lambda (bufname)
-     (let ((buf (get-buffer bufname)))
-       (when buf (kill-buffer buf))))
-   '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
+  (dolist (bufname
+           '("*poke-out*" "*poke-cmd*" "*poke-code*" "*poke-ios*"
      "*poke-vu*" "*poke-repl*" "*poke-elval*" "*poked*"
      "*poke-settings*" "*poke-maps*" "*poke-edit*" "*poke-complete*"))
+    (let ((buf (get-buffer bufname)))
+      (when buf (kill-buffer buf))))
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
