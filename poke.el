@@ -1288,10 +1288,17 @@ at the top of the `poke-maps-stack' stack."
 
 ;;;; poke-settings
 
+(defvar poke-setting-endian "big")
 (defvar poke-setting-pretty-print "no")
 (defvar poke-setting-omode "plain")
 (defvar poke-setting-omaps "no")
 (defvar poke-setting-obase 10)
+
+(defun poke-setting-set-endian (val)
+  (unless (member val '("big" "little" "host" "network"))
+    (error "Invalid setting for byte endianness.
+Expected \"big\", \"little\", \"host\" or \"network\"."))
+  (poke-code-send (concat "set_endian (" val ");")))
 
 (defun poke-setting-set-pretty-print (val)
   (unless (member val '("yes" "no"))
@@ -1326,7 +1333,8 @@ Expected 2, 8, 10 or 16."))
 
 (defun poke-init-settings ()
   (poke-setting-set-pretty-print poke-setting-pretty-print)
-  (poke-setting-set-omode poke-setting-omode))
+  (poke-setting-set-omode poke-setting-omode)
+  (poke-setting-set-endian poke-setting-endian))
 
 (defvar poke-settings-map
   (let ((map (make-sparse-keymap)))
@@ -1339,6 +1347,14 @@ Expected 2, 8, 10 or 16."))
   (let ((inhibit-read-only t))
     (erase-buffer))
   (remove-overlays)
+  (widget-insert "Byte endianness:\n")
+  (widget-create 'radio-button-choice
+                 :value poke-setting-endian
+                 :notify (lambda (widget &rest _)
+                           (poke-setting-set-endian (widget-value widget))
+                           (setq poke-setting-endian (widget-value widget)))
+                 '(item "little") '(item "big") '(item "host") '(item "network"))
+  (widget-insert "\n")
   (widget-insert "Output mode:\n")
   (widget-create 'radio-button-choice
                  :value poke-setting-omode
@@ -1371,6 +1387,9 @@ Expected 2, 8, 10 or 16."))
                            (setq poke-setting-omaps (widget-value widget)))
                  '(item "yes") '(item "no"))
   (widget-insert "\n")
+  ;; XXX oacutoff
+  ;; XXX odepth
+  ;; XXX oindent
   (use-local-map poke-settings-map)
   (widget-setup))
 
@@ -1380,7 +1399,8 @@ Expected 2, 8, 10 or 16."))
     (unless buf
       (setq buf (get-buffer-create "*poke-settings*"))
       (with-current-buffer buf
-        (poke-settings-create-widgets))))
+        (poke-settings-create-widgets)
+        (goto-char (point-min)))))
   (when and-display
     (switch-to-buffer-other-window "*poke-settings*")))
 
