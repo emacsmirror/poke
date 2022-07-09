@@ -1610,6 +1610,12 @@ fun quit = void:
   (setq poke-repl-prompt poke-repl-default-prompt)
   (setq poke-ios-alist nil))
 
+(defun poke-find-file (filename)
+   (interactive "fFind file: ")
+   ;; XXX: quote filename if needed
+   (poke-code-send
+    (concat "{ set_ios (open (\"" filename "\")); } ?! E_io;")))
+
 ;;;; window layouts
 
 (defun poke-frame-layout-1 ()
