@@ -1294,6 +1294,18 @@ at the top of the `poke-maps-stack' stack."
 (defvar poke-setting-omaps "no")
 (defvar poke-setting-obase 10)
 (defvar poke-setting-oindent 2)
+(defvar poke-setting-oacutoff 0)
+(defvar poke-setting-odepth 0)
+
+(defun poke-setting-set-oacutoff (val)
+  (unless (>= val 0)
+    (error "invalid output array cutoff value.  Must be a positive integer."))
+  (poke-code-send (concat "vm_set_oacutoff (" (number-to-string val) ");")))
+
+(defun poke-setting-set-odepth (val)
+  (unless (>= val 0)
+    (error "invalid output maximum depth value.  Must be a positive integer."))
+  (poke-code-send (concat "vm_set_odepth (" (number-to-string val) ");")))
 
 (defun poke-setting-set-oindent (val)
   (unless (>= val 0)
@@ -1342,7 +1354,9 @@ Expected 2, 8, 10 or 16."))
   (poke-setting-set-pretty-print poke-setting-pretty-print)
   (poke-setting-set-omode poke-setting-omode)
   (poke-setting-set-endian poke-setting-endian)
-  (poke-setting-set-oindent poke-setting-oindent))
+  (poke-setting-set-oindent poke-setting-oindent)
+  (poke-setting-set-oacutoff poke-setting-oacutoff)
+  (poke-setting-set-odepth poke-setting-odepth))
 
 (defvar poke-settings-map
   (let ((map (make-sparse-keymap)))
@@ -1403,8 +1417,21 @@ Expected 2, 8, 10 or 16."))
                            (poke-setting-set-oindent (widget-value widget))
                            (setq poke-setting-oindent (widget-value widget))))
   (widget-insert "\n")
-  ;; XXX oacutoff
-  ;; XXX odepth
+  (widget-insert "Output array cutoff:\n")
+  (widget-create 'integer
+                 :size 2
+                 :value poke-setting-oacutoff
+                 :action (lambda (widget &rest _)
+                           (poke-setting-set-oacutoff (widget-value widget))
+                           (setq poke-setting-oacutoff (widget-value widget))))
+  (widget-insert "\n")
+  (widget-insert "Output maximum nesting depth:\n")
+  (widget-create 'integer
+                 :size 2
+                 :value poke-setting-odepth
+                 :action (lambda (widget &rest _)
+                           (poke-setting-set-odepth (widget-value widget))
+                           (setq poke-setting-odepth (widget-value widget))))
   (use-local-map poke-settings-map)
   (widget-setup))
 
