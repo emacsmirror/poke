@@ -87,8 +87,7 @@ This program is implemented in a self-contained elisp file called
 @item From @url{https://elpa.gnu.org/packages/poke.html, GNU ELPA}
 using the built-in Emacs package manager.
 @item As part of the source tree cloned from the development git
-repository of GNU poke.  @file{poke.el} can be found in the
-@file{emacs/} directory of the GNU poke source tree.
+repository @url{https://git.savannah.gnu.org/git/poke/poke-el.git}.
 @item As a single file downloaded form some other location in
 internet.
 @item It may be already installed as part of a binary package in some
