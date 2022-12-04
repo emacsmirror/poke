@@ -262,7 +262,7 @@ following attributes in its alist:
        (with-current-buffer (process-buffer proc)
          (goto-char (point-max))
          (process-put proc 'poke-out-iter-begin (point)))))
-    (3 ;; Iteration end
+    (2 ;; Iteration end
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
          (save-excursion
@@ -275,7 +275,7 @@ following attributes in its alist:
      (process-put proc 'poke-out-emitted-iter-string nil)
      (when (process-live-p poke-repl-process)
        (poke-repl-end-of-iteration (process-get proc 'poke-out-eval))))
-    (2 ;; Process terminal poke output
+    (4 ;; Process terminal poke output
      (let ((output (poke-out-stylize
                     (process-get proc 'poke-out-styles) data)))
        (when (buffer-live-p (process-buffer proc))
@@ -287,7 +287,7 @@ following attributes in its alist:
                  (insert (concat poke-out-iter-string "\n"))
                  (process-put proc 'poke-out-emitted-iter-string t))
                (insert output)))))))
-    (6 ;; Process eval poke output
+    (7 ;; Process eval poke output
      (let ((output (poke-out-stylize
                     (process-get proc 'poke-out-styles) data)))
        ;; Append the output to the global variable which will be
@@ -302,7 +302,7 @@ following attributes in its alist:
              (let ((inhibit-read-only t))
                (goto-char (point-max))
                (insert (concat ">" output))))))))
-    (7 ;; Error output
+    (3 ;; Error output
      (let ((output (poke-out-stylize
                     (process-get proc 'poke-out-styles) data)))
        ;; Append to the eval output for now.
@@ -316,12 +316,12 @@ following attributes in its alist:
              (let ((inhibit-read-only t))
                (goto-char (point-max))
                (insert (concat "error>" output))))))))
-    (4 ;; Styling class begin
+    (5 ;; Styling class begin
      (let ((style data))
        (process-put proc
                     'poke-out-styles
                     (cons style (process-get proc 'poke-out-styles)))))
-    (5 ;; Styling class end
+    (6 ;; Styling class end
      (let ((style data)
            (styles (process-get proc 'poke-out-styles)))
        (if (or (not styles)
