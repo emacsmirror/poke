@@ -709,7 +709,11 @@ buffer."
 
 (defun poke-complete-handle-cmd (proc cmd data)
   (pcase cmd
-    (1 ; Complete identifier: variable, type, function, unit.
+    (1 ; Completion iteration begin.  Unused
+     )
+    (2 ; Completion iteration end.  Unused
+     )
+    (4 ; Complete identifier: variable, type, function, unit.
      (let ((alternatives nil))
        (with-current-buffer (process-buffer proc)
          (delete-region (point-min) (point-max))
@@ -734,7 +738,7 @@ buffer."
            (completion-in-region poke-repl-complete-begin
                                  poke-repl-complete-end
                                  poke-complete-alternatives)))))
-    (2 ; Complete IO space.  Unused
+    (5 ; Complete IO space.  Unused
      )
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
