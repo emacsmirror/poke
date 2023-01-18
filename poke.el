@@ -439,16 +439,9 @@ following attributes in its alist:
 
 (defun poke-vu-handle-cmd (proc cmd data)
   (pcase cmd
-    (1 ;; CLEAR
-     (when (buffer-live-p (process-buffer proc))
-       (with-current-buffer (process-buffer proc)
-         (let ((inhibit-read-only t))
-           (setq-local poke-vu-cur-pos (point))
-           (delete-region (point-min) (point-max))))))
-    (2 ;; APPEND
-     (process-put proc 'poke-vu-output
-                  (concat (process-get proc 'poke-vu-output) data)))
-    (5 ;; FINISH
+    (1 ;; ITER_BEGIN
+     )
+    (2 ;; ITER_END
      (when (buffer-live-p (process-buffer proc))
        (with-current-buffer (process-buffer proc)
          (let* ((inhibit-read-only t)
@@ -462,9 +455,16 @@ following attributes in its alist:
              (when offset
                (poke-vu-goto-byte offset))))))
      (process-put proc 'poke-vu-output ""))
-    (3 ;; HIGHLIGHT
-     )
-    (4 ;; FILTER
+    (3 ;; CLEAR
+     (when (buffer-live-p (process-buffer proc))
+       (with-current-buffer (process-buffer proc)
+         (let ((inhibit-read-only t))
+           (setq-local poke-vu-cur-pos (point))
+           (delete-region (point-min) (point-max))))))
+    (4 ;; APPEND
+     (process-put proc 'poke-vu-output
+                  (concat (process-get proc 'poke-vu-output) data)))
+    (5 ;; HIGHLIGHT
      )
     (_ ;; Protocol error
      (process-put proc 'pokelet-buf "")
