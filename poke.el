@@ -222,7 +222,7 @@ following attributes in its alist:
      (process-put proc 'pokelet-msg-handler msg-handler)
      (set-process-query-on-exit-flag proc nil)
      (set-process-filter proc #'poke-pokelet-filter)
-     (set-process-filter-multibyte proc nil)
+     (set-process-coding-system proc 'binary 'binary)
      (process-send-string proc ctrl)
      proc))
 
