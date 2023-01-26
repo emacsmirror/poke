@@ -1,12 +1,12 @@
 ;;; poke.el --- Emacs meets GNU poke!  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2022  Free Software Foundation, Inc.
+;; Copyright (C) 2022, 2023  Free Software Foundation, Inc.
 
 ;; Author: Jose E. Marchesi <jemarch@gnu.org>
 ;; Maintainer: Jose E. Marchesi <jemarch@gnu.org>
 ;; URL: https://www.jemarch.net/poke
 ;; Package-Requires: ((emacs "25"))
-;; Version: 2.1
+;; Version: 3.0
 
 ;; This file is NOT part of GNU Emacs.
 
