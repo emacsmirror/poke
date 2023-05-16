@@ -6,7 +6,7 @@
 ;; Maintainer: Jose E. Marchesi <jemarch@gnu.org>
 ;; URL: https://www.jemarch.net/poke
 ;; Package-Requires: ((emacs "25"))
-;; Version: 3.1
+;; Version: 3.2
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -144,7 +144,7 @@ buffer `*poked*'."
     (setq poke-poked-process
           (make-process :name "poked"
                         :buffer "*poked*"
-                        :command (list poke-poked-program "-S" "/tmp/poked.ipc")))
+                        :command (list poke-poked-program "-S" poked-socket)))
     (set-process-query-on-exit-flag poke-poked-process nil)))
 
 ;;;; pokelet protocol
