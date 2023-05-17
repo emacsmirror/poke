@@ -491,7 +491,9 @@ following attributes in its alist:
       (progn
         (setq-local poke--start-byte-offset (- poke--start-byte-offset #x10))
         (poke-vu-refresh))
-    (previous-line))
+    (let ((col (current-column)))
+      (forward-line -1)
+      (line-move-to-column col)))
   (let ((offset (poke-vu-byte-at-point)))
     (if offset
         (poke-vu-goto-byte offset))))
@@ -503,8 +505,12 @@ following attributes in its alist:
         (setq-local poke--start-byte-offset (+ poke--start-byte-offset #x10))
         (poke-vu-refresh)
         (goto-char (point-max))
-        (previous-line))
-    (next-line))
+        (let ((col (current-column)))
+          (forward-line -1)
+          (line-move-to-column col)))
+    (let ((col (current-column)))
+      (forward-line 1)
+      (line-move-to-column col)))
   (let ((offset (poke-vu-byte-at-point)))
     (if offset
         (poke-vu-goto-byte offset))))
@@ -1206,7 +1212,9 @@ at the top of the `poke-maps-stack' stack."
 (defun poke-maps-cmd-prev ()
   "Move to the previous line in the *poke-maps* buffer."
   (interactive)
-  (previous-line 1)
+  (let ((col (current-column)))
+    (forward-line -1)
+    (line-move-to-column col))
   (poke-maps-do-line))
 
 (defun poke-maps-cmd-sub ()
@@ -1256,7 +1264,6 @@ at the top of the `poke-maps-stack' stack."
     (define-key map (kbd "RET") #'poke-maps-cmd-sub)
     (define-key map (kbd "SPC") #'poke-maps-cmd-scroll-out-up)
     (define-key map (kbd "u")   #'poke-maps-cmd-parent)
-    (define-key map (kbd "#")   #'poke-maps-cmd-mark)
     (define-key map (kbd "n")   #'poke-maps-cmd-next)
     (define-key map (kbd "p")   #'poke-maps-cmd-prev)
     (define-key map (kbd "e")   #'poke-maps-cmd-edit)
